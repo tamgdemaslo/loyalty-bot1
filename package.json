@@ -1,0 +1,16 @@
+{
+  "name": "loyalty-bot-system",
+  "version": "1.0.0",
+  "description": "Telegram Loyalty Bot System with Mini App",
+  "main": "miniapp/server.js",
+  "scripts": {
+    "start": "cd miniapp && npm start",
+    "build": "cd miniapp && npm install",
+    "postinstall": "cd miniapp && npm install"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "author": "Your Name",
+  "license": "MIT"
+}
