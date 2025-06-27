@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "name": "loyalty-telegram-miniapp",
+  "builds": [
+    {
+      "src": "miniapp/server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "miniapp/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "miniapp/server.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "miniapp/server.js": {
+      "maxDuration": 30
+    }
+  }
+}
