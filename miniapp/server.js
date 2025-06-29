@@ -310,16 +310,8 @@ app.post('/api/redeem', async (req, res) => {
         
         // Обновляем баланс в таблице bonuses
         const db = loyaltyAPI.db;
-        await new Promise((resolve, reject) => {
-            db.run(
-                "UPDATE bonuses SET balance = balance - ? WHERE agent_id = ?",
-                [amountInKopecks, agentId],
-                function(err) {
-                    if (err) reject(err);
-                    else resolve();
-                }
-            );
-        });
+        const updateStmt = db.prepare("UPDATE bonuses SET balance = balance - ? WHERE agent_id = ?");
+        updateStmt.run(amountInKopecks, agentId);
         
         const newBalance = await loyaltyAPI.getBalance(agentId);
         

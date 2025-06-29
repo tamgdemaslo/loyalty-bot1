@@ -1,10 +1,10 @@
 // API интеграция Mini App с системой лояльности
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 
 // Подключение к базе данных лояльности
 const dbPath = path.join(__dirname, '..', 'loyalty.db');
-const db = new sqlite3.Database(dbPath);
+const db = new Database(dbPath);
 
 class LoyaltyAPI {
     constructor() {
@@ -13,36 +13,30 @@ class LoyaltyAPI {
 
     // Получить ID агента по Telegram ID
     getAgentId(telegramId) {
-        return new Promise((resolve, reject) => {
-            this.db.get(
-                "SELECT agent_id FROM user_map WHERE tg_id = ?",
-                [telegramId],
-                (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row ? row.agent_id : null);
-                }
-            );
-        });
+        try {
+            const stmt = this.db.prepare("SELECT agent_id FROM user_map WHERE tg_id = ?");
+            const row = stmt.get(telegramId);
+            return Promise.resolve(row ? row.agent_id : null);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Получить баланс пользователя
     getBalance(agentId) {
-        return new Promise((resolve, reject) => {
-            this.db.get(
-                "SELECT balance FROM bonuses WHERE agent_id = ?",
-                [agentId],
-                (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row ? row.balance : 0);
-                }
-            );
-        });
+        try {
+            const stmt = this.db.prepare("SELECT balance FROM bonuses WHERE agent_id = ?");
+            const row = stmt.get(agentId);
+            return Promise.resolve(row ? row.balance : 0);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Получить уровень лояльности
     getLoyaltyLevel(agentId) {
-        return new Promise((resolve, reject) => {
-            this.db.get(`
+        try {
+            const stmt = this.db.prepare(`
                 SELECT 
                     level_id,
                     total_spent,
@@ -56,82 +50,84 @@ class LoyaltyAPI {
                     ), 0) as total_redeemed
                 FROM loyalty_levels 
                 WHERE agent_id = ?
-            `, [agentId, agentId, agentId], (err, row) => {
-                if (err) reject(err);
-                else resolve(row || { level_id: 1, total_earned: 0, total_redeemed: 0, total_spent: 0 });
-            });
-        });
+            `);
+            const row = stmt.get(agentId, agentId, agentId);
+            return Promise.resolve(row || { level_id: 1, total_earned: 0, total_redeemed: 0, total_spent: 0 });
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Получить транзакции пользователя
     getTransactions(agentId, limit = 20) {
-        return new Promise((resolve, reject) => {
-            this.db.all(`
+        try {
+            const stmt = this.db.prepare(`
                 SELECT transaction_type, amount, description, created_at, related_demand_id
                 FROM bonus_transactions 
                 WHERE agent_id = ? 
                 ORDER BY created_at DESC 
                 LIMIT ?
-            `, [agentId, limit], (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows || []);
-            });
-        });
+            `);
+            const rows = stmt.all(agentId, limit);
+            return Promise.resolve(rows || []);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Получить данные ТО пользователя
     getMaintenanceData(agentId) {
-        return new Promise((resolve, reject) => {
-            this.db.all(`
+        try {
+            const stmt = this.db.prepare(`
                 SELECT work_id, performed_date, mileage, source, notes, created_at
                 FROM maintenance_history 
                 WHERE agent_id = ? 
                 ORDER BY performed_date DESC
-            `, [agentId], (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows || []);
-            });
-        });
+            `);
+            const rows = stmt.all(agentId);
+            return Promise.resolve(rows || []);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Получить контактную информацию пользователя
     getUserContact(telegramId) {
-        return new Promise((resolve, reject) => {
-            this.db.get(
-                "SELECT phone, fullname FROM user_map WHERE tg_id = ?",
-                [telegramId],
-                (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row || { phone: null, fullname: null });
-                }
-            );
-        });
+        try {
+            const stmt = this.db.prepare("SELECT phone, fullname FROM user_map WHERE tg_id = ?");
+            const row = stmt.get(telegramId);
+            return Promise.resolve(row || { phone: null, fullname: null });
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Добавить транзакцию бонусов
     addBonusTransaction(agentId, transactionType, amount, description, demandId = null) {
-        return new Promise((resolve, reject) => {
-            this.db.run(`
+        try {
+            const stmt = this.db.prepare(`
                 INSERT INTO bonus_transactions (agent_id, transaction_type, amount, description, related_demand_id, created_at)
                 VALUES (?, ?, ?, ?, ?, datetime('now'))
-            `, [agentId, transactionType, amount, description, demandId], function(err) {
-                if (err) reject(err);
-                else resolve(this.lastID);
-            });
-        });
+            `);
+            const result = stmt.run(agentId, transactionType, amount, description, demandId);
+            return Promise.resolve(result.lastInsertRowid);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Добавить запись о ТО
     addMaintenanceRecord(agentId, workId, performedDate, mileage, notes = '') {
-        return new Promise((resolve, reject) => {
-            this.db.run(`
+        try {
+            const stmt = this.db.prepare(`
                 INSERT INTO maintenance_history (agent_id, work_id, performed_date, mileage, source, notes, created_at)
                 VALUES (?, ?, ?, ?, 'manual', ?, datetime('now'))
-            `, [agentId, workId, performedDate, mileage, notes], function(err) {
-                if (err) reject(err);
-                else resolve(this.lastID);
-            });
-        });
+            `);
+            const result = stmt.run(agentId, workId, performedDate, mileage, notes);
+            return Promise.resolve(result.lastInsertRowid);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
     // Получить последние посещения (через МойСклад API)

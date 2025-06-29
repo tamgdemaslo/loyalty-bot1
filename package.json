@@ -5,8 +5,8 @@
   "main": "miniapp/server.js",
   "scripts": {
     "start": "cd miniapp && npm start",
-    "build": "cd miniapp && npm install && npm rebuild sqlite3",
-    "postinstall": "cd miniapp && npm install && npm rebuild sqlite3"
+    "build": "cd miniapp && npm install && npm rebuild better-sqlite3",
+    "postinstall": "cd miniapp && npm install && npm rebuild better-sqlite3"
   },
   "engines": {
     "node": ">=16.0.0"
