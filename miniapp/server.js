@@ -580,6 +580,35 @@ app.get('/api/slots/:staffId/:date', (req, res) => {
     res.json(slots);
 });
 
+// Тестовый endpoint для создания пользователя (только для разработки)
+app.post('/api/create-test-user', async (req, res) => {
+    if (process.env.NODE_ENV === 'production') {
+        return res.status(403).json({ error: 'Not allowed in production' });
+    }
+    
+    try {
+        const loyaltyAPI = new LoyaltyAPI();
+        
+        // Создаем тестового пользователя
+        const testUserId = 395925539;
+        const testAgentId = '51184984-4f52-11f0-0a80-191f00608b92';
+        const testPhone = '+79992556031';
+        const testName = 'Илья | Там где масло ⛽️';
+        
+        await loyaltyAPI.registerUserMapping(testUserId, testAgentId, testPhone, testName);
+        
+        res.json({
+            success: true,
+            message: 'Test user created successfully',
+            userId: testUserId,
+            agentId: testAgentId
+        });
+    } catch (error) {
+        console.error('Error creating test user:', error);
+        res.status(500).json({ error: 'Failed to create test user' });
+    }
+});
+
 // Обработка ошибок
 app.use((err, req, res, next) => {
     console.error(err.stack);
