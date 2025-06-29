@@ -53,6 +53,13 @@ class LoyaltyApp {
             console.log('Telegram initData:', this.tg.initData);
             console.log('Telegram initDataUnsafe:', this.tg.initDataUnsafe);
             
+            // Проверяем, есть ли пользователь в Telegram
+            if (!this.userData || !this.userData.id) {
+                console.log('No Telegram user data, showing authorization prompt');
+                this.showAuthorizationPrompt();
+                return;
+            }
+            
             // Получаем данные пользователя с сервера
             const response = await fetch('/api/user', {
                 method: 'POST',
@@ -66,9 +73,16 @@ class LoyaltyApp {
             });
             
             if (!response.ok) {
-                const errorText = await response.text();
-                console.error('API Error:', errorText);
-                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                const errorData = await response.json().catch(() => null);
+                console.error('API Error:', errorData);
+                
+                // Если пользователь не зарегистрирован (404), показываем форму регистрации
+                if (response.status === 404) {
+                    this.showRegistrationForm();
+                    return;
+                }
+                
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             this.userLoyaltyData = await response.json();
@@ -77,22 +91,27 @@ class LoyaltyApp {
         } catch (error) {
             console.error('Error loading user data:', error);
             
-            // Fallback to demo data if API fails
-            console.log('Using demo data as fallback');
-            this.userLoyaltyData = {
-                balance: 2450,
-                level: 'Silver',
-                totalSpent: 75000,
-                totalEarned: 5420,
-                totalRedeemed: 2970,
-                totalVisits: 12,
-                phone: this.userData?.phone_number || '+7 XXX XXX-XX-XX',
-                name: this.userData?.first_name || 'Пользователь',
-                registeredDate: '2023-05-15'
-            };
-            
-            this.updateUserInterface();
-            this.showError('Не удалось загрузить данные с сервера. Используются демо-данные.');
+            // Для разработки: используем демо данные если есть Telegram user
+            if (this.userData && this.userData.id) {
+                console.log('Using demo data as fallback for testing');
+                this.userLoyaltyData = {
+                    id: this.userData.id,
+                    name: this.userData.first_name || 'Demo User',
+                    phone: '+7 123 456-78-90',
+                    balance: 2450,
+                    level: 'Silver',
+                    totalSpent: 75000,
+                    totalEarned: 5420,
+                    totalRedeemed: 2970,
+                    totalVisits: 12,
+                    registeredDate: '2023-05-15'
+                };
+                
+                this.updateUserInterface();
+                this.showError('Не удалось загрузить данные с сервера. Используются демо-данные.');
+            } else {
+                this.showAuthorizationPrompt();
+            }
         }
     }
 
@@ -454,6 +473,123 @@ class LoyaltyApp {
     showMainApp() {
         document.getElementById('loading').style.display = 'none';
         document.getElementById('main-app').style.display = 'block';
+    }
+    
+    showAuthorizationPrompt() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-app').innerHTML = `
+            <div style="padding: 40px 20px; text-align: center;">
+                <div style="font-size: 64px; margin-bottom: 24px;">🔐</div>
+                <h2 style="margin-bottom: 16px;">Требуется авторизация</h2>
+                <p style="color: var(--tg-theme-hint-color); margin-bottom: 32px;">
+                    Для доступа к приложению необходимо сначала авторизоваться в боте.
+                </p>
+                <p style="color: var(--tg-theme-hint-color); margin-bottom: 24px;">
+                    Перейдите в чат с ботом @tgmclientbot и выполните команду /start, поделившись номером телефона.
+                </p>
+                <button class="btn-primary" onclick="window.Telegram.WebApp.close()">
+                    Закрыть приложение
+                </button>
+            </div>
+        `;
+        document.getElementById('main-app').style.display = 'block';
+    }
+    
+    showRegistrationForm() {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('main-app').innerHTML = `
+            <div style="padding: 40px 20px; text-align: center;">
+                <div style="font-size: 64px; margin-bottom: 24px;">📱</div>
+                <h2 style="margin-bottom: 16px;">Регистрация в системе лояльности</h2>
+                <p style="color: var(--tg-theme-hint-color); margin-bottom: 32px;">
+                    Добро пожаловать! Для продолжения необходимо зарегистрироваться.
+                </p>
+                
+                <div id="registration-form" style="max-width: 300px; margin: 0 auto;">
+                    <div style="margin-bottom: 16px; text-align: left;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Имя и фамилия:</label>
+                        <input type="text" id="user-name-input" placeholder="Иван Петров" 
+                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                    </div>
+                    
+                    <div style="margin-bottom: 24px; text-align: left;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Номер телефона:</label>
+                        <input type="tel" id="user-phone-input" placeholder="+7 123 456-78-90" 
+                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                    </div>
+                    
+                    <button class="btn-primary" onclick="loyaltyApp.registerUser()" style="width: 100%; margin-bottom: 16px;">
+                        Зарегистрироваться
+                    </button>
+                    
+                    <button class="btn-secondary" onclick="window.Telegram.WebApp.close()" style="width: 100%;">
+                        Отмена
+                    </button>
+                </div>
+                
+                <div id="registration-loading" style="display: none; padding: 20px;">
+                    <div style="font-size: 24px; margin-bottom: 16px;">⏳</div>
+                    <p>Регистрация...</p>
+                </div>
+            </div>
+        `;
+        document.getElementById('main-app').style.display = 'block';
+    }
+    
+    async registerUser() {
+        const name = document.getElementById('user-name-input').value.trim();
+        const phone = document.getElementById('user-phone-input').value.trim();
+        
+        if (!name || !phone) {
+            this.tg.showAlert('Пожалуйста, заполните все поля');
+            return;
+        }
+        
+        // Простая валидация телефона
+        const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+        if (!phoneRegex.test(phone.replace(/[\s-]/g, ''))) {
+            this.tg.showAlert('Пожалуйста, введите корректный номер телефона');
+            return;
+        }
+        
+        try {
+            document.getElementById('registration-form').style.display = 'none';
+            document.getElementById('registration-loading').style.display = 'block';
+            
+            const response = await fetch('/api/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    initData: this.tg.initData || '',
+                    phone: phone.replace(/[\s-]/g, ''),
+                    name: name
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+                this.tg.showAlert(
+                    `Регистрация успешно завершена!\n\n` +
+                    `🎉 Вам начислено ${result.bonusAwarded} приветственных бонусов!`
+                );
+                
+                // Перезагружаем данные пользователя
+                setTimeout(() => {
+                    this.loadUserData();
+                }, 2000);
+            } else {
+                throw new Error(result.message || 'Ошибка регистрации');
+            }
+            
+        } catch (error) {
+            console.error('Registration error:', error);
+            document.getElementById('registration-form').style.display = 'block';
+            document.getElementById('registration-loading').style.display = 'none';
+            this.tg.showAlert(`Ошибка регистрации: ${error.message}`);
+        }
     }
 
     showRedeemModal() {

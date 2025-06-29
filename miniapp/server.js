@@ -97,6 +97,8 @@ app.post('/api/user', async (req, res) => {
             console.error('No user ID found in request');
             return res.status(400).json({ 
                 error: 'User ID not found',
+                message: 'Не удалось получить данные пользователя из Telegram',
+                requiresAuthorization: true,
                 debug: {
                     hasInitData: !!initData,
                     hasDirectUser: !!directUser,
@@ -110,7 +112,14 @@ app.post('/api/user', async (req, res) => {
         // Получаем ID агента по Telegram ID
         const agentId = await loyaltyAPI.getAgentId(user.id);
         if (!agentId) {
-            return res.status(404).json({ error: 'User not registered' });
+            console.log(`User ${user.id} not registered in bot, requiring bot authorization`);
+            return res.status(404).json({ 
+                error: 'User not registered',
+                message: 'Пользователь не авторизован в боте',
+                requiresBotAuth: true,
+                telegramId: user.id,
+                username: user.username || null
+            });
         }
         
         // Получаем все данные пользователя
