@@ -8,7 +8,7 @@ YCLIENTS_PARTNER_ID = 9354
 YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "mz5bf2yp97nbs4s45e9j")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "7914899311:AAGY4CjuMqZX3w1eS7zCM2yNMW3312xCwPE")
 MS_TOKEN = os.getenv("MS_TOKEN", "ecfb2a801095bded8b05cabbb597bbce3dc59e73")
-MINIAPP_URL = os.getenv("MINIAPP_URL", "https://t.me/tgmclientbot/tgmapp")
+MINIAPP_URL = os.getenv("MINIAPP_URL", "http://localhost:3000")
 
 if not (BOT_TOKEN and MS_TOKEN):
     raise RuntimeError("Укажите BOT_TOKEN и MS_TOKEN — в .env или переменных окружения!")
