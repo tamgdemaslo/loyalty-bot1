@@ -20,7 +20,7 @@ try {
 // Создаем таблицы при запуске (если их нет)
 try {
     // Создаем таблицы
-    db.exec(`CREATE TABLE IF NOT EXISTS user_mapping (
+    db.exec(`CREATE TABLE IF NOT EXISTS user_map (
         tg_id INTEGER PRIMARY KEY,
         agent_id TEXT NOT NULL,
         phone TEXT,
@@ -28,7 +28,7 @@ try {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     
-    db.exec(`CREATE TABLE IF NOT EXISTS balances (
+    db.exec(`CREATE TABLE IF NOT EXISTS bonuses (
         agent_id TEXT PRIMARY KEY,
         balance INTEGER DEFAULT 0
     )`);
@@ -65,10 +65,10 @@ try {
     console.log('✅ Базовые таблицы созданы/проверены');
     
     // Вставляем тестового пользователя для демо
-    const insertUser = db.prepare(`INSERT OR IGNORE INTO user_mapping (tg_id, agent_id, phone, fullname) VALUES (?, ?, ?, ?)`);
+    const insertUser = db.prepare(`INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) VALUES (?, ?, ?, ?)`);
     insertUser.run(12345, 'demo_agent_id', '+7123456789', 'Demo User');
     
-    const insertBalance = db.prepare(`INSERT OR IGNORE INTO balances (agent_id, balance) VALUES (?, ?)`);
+    const insertBalance = db.prepare(`INSERT OR IGNORE INTO bonuses (agent_id, balance) VALUES (?, ?)`);
     insertBalance.run('demo_agent_id', 245000); // 2450 рублей в копейках
     
     const insertLoyalty = db.prepare(`INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent, total_earned, total_redeemed) VALUES (?, ?, ?, ?, ?)`);
@@ -86,26 +86,30 @@ class LoyaltyAPI {
 
     // Получить ID агента по Telegram ID
     async getAgentId(telegramId) {
-        try {
-            const stmt = this.db.prepare("SELECT agent_id FROM user_mapping WHERE tg_id = ?");
-            const row = stmt.get(telegramId);
-            return row ? row.agent_id : null;
-        } catch (error) {
-            console.error('Error getting agent ID:', error);
-            return null;
-        }
+        return new Promise((resolve, reject) => {
+            this.db.get("SELECT agent_id FROM user_map WHERE tg_id = ?", [telegramId], (err, row) => {
+                if (err) {
+                    console.error('Error getting agent ID:', err);
+                    reject(err);
+                } else {
+                    resolve(row ? row.agent_id : null);
+                }
+            });
+        });
     }
 
     // Получить баланс пользователя
     async getBalance(agentId) {
-        try {
-            const stmt = this.db.prepare("SELECT balance FROM balances WHERE agent_id = ?");
-            const row = stmt.get(agentId);
-            return row ? row.balance : 0;
-        } catch (error) {
-            console.error('Error getting balance:', error);
-            return 0;
-        }
+        return new Promise((resolve, reject) => {
+            this.db.get("SELECT balance FROM bonuses WHERE agent_id = ?", [agentId], (err, row) => {
+                if (err) {
+                    console.error('Error getting balance:', err);
+                    reject(err);
+                } else {
+                    resolve(row ? row.balance : 0);
+                }
+            });
+        });
     }
 
     // Получить уровень лояльности
