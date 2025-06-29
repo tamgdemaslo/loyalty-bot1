@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -61,7 +62,9 @@ app.get('/', (req, res) => {
 
 // Получение данных пользователя
 app.post('/api/user', async (req, res) => {
-    const { initData } = req.body;
+    const { initData, user: directUser } = req.body;
+    
+    console.log('Received request:', { initData, directUser });
     
     // В продакшене обязательно валидировать данные
     // if (!validateTelegramWebAppData(initData)) {
@@ -69,22 +72,37 @@ app.post('/api/user', async (req, res) => {
     // }
     
     try {
-        // Парсим данные пользователя
-        const urlParams = new URLSearchParams(initData);
-        const userParam = urlParams.get('user');
         let user = null;
         
-        if (userParam) {
-            try {
-                user = JSON.parse(decodeURIComponent(userParam));
-            } catch (error) {
-                console.error('Error parsing user data:', error);
-                return res.status(400).json({ error: 'Invalid user data' });
+        // Пробуем получить пользователя из прямых данных (новый формат)
+        if (directUser && directUser.id) {
+            user = directUser;
+            console.log('Using direct user data:', user);
+        } else if (initData) {
+            // Парсим данные пользователя из initData (старый формат)
+            const urlParams = new URLSearchParams(initData);
+            const userParam = urlParams.get('user');
+            
+            if (userParam) {
+                try {
+                    user = JSON.parse(decodeURIComponent(userParam));
+                    console.log('Parsed user from initData:', user);
+                } catch (error) {
+                    console.error('Error parsing user data from initData:', error);
+                }
             }
         }
         
         if (!user || !user.id) {
-            return res.status(400).json({ error: 'User ID not found' });
+            console.error('No user ID found in request');
+            return res.status(400).json({ 
+                error: 'User ID not found',
+                debug: {
+                    hasInitData: !!initData,
+                    hasDirectUser: !!directUser,
+                    initDataLength: initData ? initData.length : 0
+                }
+            });
         }
         
         const loyaltyAPI = new LoyaltyAPI();
@@ -308,10 +326,8 @@ app.post('/api/redeem', async (req, res) => {
             description || `Списание ${amount} бонусов через Mini App`
         );
         
-        // Обновляем баланс в таблице bonuses
-        const db = loyaltyAPI.db;
-        const updateStmt = db.prepare("UPDATE bonuses SET balance = balance - ? WHERE agent_id = ?");
-        updateStmt.run(amountInKopecks, agentId);
+        // Обновляем баланс через API
+        await loyaltyAPI.updateBalance(agentId, -amountInKopecks);
         
         const newBalance = await loyaltyAPI.getBalance(agentId);
         
@@ -323,6 +339,145 @@ app.post('/api/redeem', async (req, res) => {
         });
     } catch (error) {
         console.error('Error redeeming bonuses:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Регистрация нового пользователя
+app.post('/api/register', async (req, res) => {
+    const { initData, phone, name } = req.body;
+    
+    try {
+        // Парсим данные пользователя из Telegram
+        const urlParams = new URLSearchParams(initData);
+        const userParam = urlParams.get('user');
+        let user = null;
+        
+        if (userParam) {
+            try {
+                user = JSON.parse(decodeURIComponent(userParam));
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+                return res.status(400).json({ error: 'Invalid user data' });
+            }
+        }
+        
+        if (!user || !user.id) {
+            return res.status(400).json({ error: 'User ID not found' });
+        }
+        
+        const loyaltyAPI = new LoyaltyAPI();
+        
+        // Проверяем, не зарегистрирован ли уже пользователь
+        const existingAgentId = await loyaltyAPI.getAgentId(user.id);
+        if (existingAgentId) {
+            return res.status(409).json({ 
+                error: 'User already registered',
+                message: 'Пользователь уже зарегистрирован'
+            });
+        }
+        
+        // Ищем пользователя в МойСклад по номеру телефона
+        let agentId = await loyaltyAPI.findAgentByPhone(phone);
+        
+        if (!agentId) {
+            // Создаем нового контрагента в МойСклад
+            agentId = await loyaltyAPI.createNewAgent(name, phone);
+        }
+        
+        // Создаем связь между Telegram ID и Agent ID
+        await loyaltyAPI.registerUserMapping(user.id, agentId, phone, name);
+        
+        // Начисляем приветственные бонусы
+        await loyaltyAPI.addBonusTransaction(
+            agentId,
+            'accrual',
+            10000, // 100 рублей в копейках
+            'Приветственные бонусы при регистрации через Mini App'
+        );
+        
+        res.json({
+            success: true,
+            message: 'Регистрация прошла успешно!',
+            agentId: agentId,
+            bonusAwarded: 100
+        });
+        
+    } catch (error) {
+        console.error('Error during registration:', error);
+        res.status(500).json({ 
+            error: 'Registration failed',
+            message: 'Ошибка при регистрации. Попробуйте еще раз.'
+        });
+    }
+});
+
+// Проверка статуса регистрации пользователя
+app.post('/api/check-registration', async (req, res) => {
+    const { initData, phone } = req.body;
+    
+    try {
+        // Парсим данные пользователя
+        const urlParams = new URLSearchParams(initData);
+        const userParam = urlParams.get('user');
+        let user = null;
+        
+        if (userParam) {
+            try {
+                user = JSON.parse(decodeURIComponent(userParam));
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+                return res.status(400).json({ error: 'Invalid user data' });
+            }
+        }
+        
+        if (!user || !user.id) {
+            return res.status(400).json({ error: 'User ID not found' });
+        }
+        
+        const loyaltyAPI = new LoyaltyAPI();
+        
+        // Проверяем регистрацию в нашей системе
+        const agentId = await loyaltyAPI.getAgentId(user.id);
+        
+        if (agentId) {
+            // Пользователь уже зарегистрирован
+            const [balance, loyaltyLevel, contact] = await Promise.all([
+                loyaltyAPI.getBalance(agentId),
+                loyaltyAPI.getLoyaltyLevel(agentId),
+                loyaltyAPI.getUserContact(user.id)
+            ]);
+            
+            const levelNames = ['', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+            const levelName = levelNames[loyaltyLevel.level_id] || 'Bronze';
+            
+            return res.json({
+                isRegistered: true,
+                user: {
+                    id: user.id,
+                    name: contact.fullname || user.first_name || 'Пользователь',
+                    phone: contact.phone,
+                    balance: Math.round(balance / 100),
+                    level: levelName
+                }
+            });
+        }
+        
+        // Если не зарегистрирован в нашей системе, проверяем МойСклад
+        let foundInMoySklad = false;
+        if (phone) {
+            const existingAgentId = await loyaltyAPI.findAgentByPhone(phone);
+            foundInMoySklad = !!existingAgentId;
+        }
+        
+        res.json({
+            isRegistered: false,
+            foundInMoySklad: foundInMoySklad,
+            canRegister: true
+        });
+        
+    } catch (error) {
+        console.error('Error checking registration:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

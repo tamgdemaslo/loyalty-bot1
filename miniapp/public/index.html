@@ -365,6 +365,28 @@
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
         }
+        
+        // Setup bypass for localtunnel password page
+        if (window.location.hostname.includes('loca.lt')) {
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                if (args[1]) {
+                    args[1].headers = {
+                        ...args[1].headers,
+                        'bypass-tunnel-reminder': 'true',
+                        'User-Agent': 'TelegramWebApp/1.0'
+                    };
+                } else {
+                    args[1] = {
+                        headers: {
+                            'bypass-tunnel-reminder': 'true',
+                            'User-Agent': 'TelegramWebApp/1.0'
+                        }
+                    };
+                }
+                return originalFetch.apply(this, args);
+            };
+        }
 
         // Navigation data
         const pages = {

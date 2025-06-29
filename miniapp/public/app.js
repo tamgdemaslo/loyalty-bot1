@@ -49,11 +49,36 @@ class LoyaltyApp {
 
     async loadUserData() {
         try {
-            // Имитация загрузки данных с сервера
-            // В реальном приложении здесь будет API вызов
-            await this.sleep(1500);
+            console.log('Loading user data...');
+            console.log('Telegram initData:', this.tg.initData);
+            console.log('Telegram initDataUnsafe:', this.tg.initDataUnsafe);
             
-            // Демо данные
+            // Получаем данные пользователя с сервера
+            const response = await fetch('/api/user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    initData: this.tg.initData || '',
+                    user: this.tg.initDataUnsafe?.user || null
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('API Error:', errorText);
+                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+            }
+            
+            this.userLoyaltyData = await response.json();
+            this.updateUserInterface();
+            
+        } catch (error) {
+            console.error('Error loading user data:', error);
+            
+            // Fallback to demo data if API fails
+            console.log('Using demo data as fallback');
             this.userLoyaltyData = {
                 balance: 2450,
                 level: 'Silver',
@@ -67,10 +92,7 @@ class LoyaltyApp {
             };
             
             this.updateUserInterface();
-            
-        } catch (error) {
-            console.error('Error loading user data:', error);
-            this.showError('Ошибка загрузки данных');
+            this.showError('Не удалось загрузить данные с сервера. Используются демо-данные.');
         }
     }
 
@@ -139,113 +161,244 @@ class LoyaltyApp {
         document.getElementById('total-redeemed').textContent = this.formatMoney(this.userLoyaltyData.totalRedeemed);
     }
 
-    loadRecentTransactions() {
+    async loadRecentTransactions() {
         const container = document.getElementById('recent-transactions');
         
-        // Демо данные транзакций
-        const transactions = [
-            { type: 'Начисление за визит', amount: 450, date: '2024-01-20', positive: true },
-            { type: 'Списание бонусов', amount: -320, date: '2024-01-18', positive: false },
-            { type: 'Начисление за визит', amount: 680, date: '2024-01-15', positive: true }
-        ];
-        
-        container.innerHTML = '';
-        
-        if (transactions.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">Нет операций</p>';
-            return;
-        }
-        
-        transactions.forEach(transaction => {
-            const item = document.createElement('div');
-            item.className = 'transaction-item';
-            
-            item.innerHTML = `
-                <div class="transaction-info">
-                    <div class="transaction-type">${transaction.type}</div>
-                    <div class="transaction-date">${this.formatDate(transaction.date)}</div>
-                </div>
-                <div class="transaction-amount ${transaction.positive ? 'positive' : 'negative'}">
-                    ${transaction.positive ? '+' : ''}${this.formatMoney(Math.abs(transaction.amount))}
-                </div>
-            `;
-            
-            container.appendChild(item);
-        });
-    }
-
-    loadVisitHistory() {
-        const container = document.getElementById('history-list');
-        
-        // Демо данные посещений
-        const visits = [
-            { id: 1, title: 'Чек №12345', amount: 8500, date: '2024-01-20', services: ['Замена масла', 'Диагностика'] },
-            { id: 2, title: 'Чек №12344', amount: 15300, date: '2024-01-15', services: ['ТО-15000', 'Замена фильтров'] },
-            { id: 3, title: 'Чек №12343', amount: 3200, date: '2024-01-10', services: ['Развал-схождение'] }
-        ];
-        
-        container.innerHTML = '';
-        
-        if (visits.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">История пуста</p>';
-            return;
-        }
-        
-        visits.forEach(visit => {
-            const item = document.createElement('div');
-            item.className = 'history-item';
-            
-            item.innerHTML = `
-                <div class="history-header">
-                    <div class="history-title">${visit.title}</div>
-                    <div class="history-amount">${this.formatMoney(visit.amount)}</div>
-                </div>
-                <div class="history-date">${this.formatDate(visit.date)}</div>
-                <div style="margin-top: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
-                    ${visit.services.join(', ')}
-                </div>
-            `;
-            
-            item.addEventListener('click', () => this.showVisitDetails(visit));
-            container.appendChild(item);
-        });
-    }
-
-    loadMaintenanceData() {
-        const container = document.getElementById('maintenance-overview');
-        
-        // Демо данные ТО
-        const maintenanceItems = [
-            { id: 1, title: '🛢️ Замена масла', subtitle: 'Каждые 10,000 км', status: 'soon', lastKm: 48500, nextKm: 50000 },
-            { id: 2, title: '🔧 ТО-15000', subtitle: 'Каждые 15,000 км', status: 'ok', lastKm: 45000, nextKm: 60000 },
-            { id: 3, title: '🛞 Замена колодок', subtitle: 'По износу', status: 'overdue', lastKm: 35000, nextKm: 45000 },
-            { id: 4, title: '⚙️ Развал-схождение', subtitle: 'Каждые 20,000 км', status: 'never', lastKm: null, nextKm: null }
-        ];
-        
-        container.innerHTML = '';
-        
-        maintenanceItems.forEach(item => {
-            const element = document.createElement('div');
-            element.className = 'maintenance-item';
-            
-            let statusText = '';
-            switch (item.status) {
-                case 'ok': statusText = 'В порядке'; break;
-                case 'soon': statusText = 'Скоро'; break;
-                case 'overdue': statusText = 'Просрочено'; break;
-                case 'never': statusText = 'Не делали'; break;
+        try {
+            if (!this.userData?.id) {
+                throw new Error('User ID not available');
             }
             
-            element.innerHTML = `
-                <div class="maintenance-info">
-                    <div class="maintenance-title">${item.title}</div>
-                    <div class="maintenance-subtitle">${item.subtitle}</div>
-                </div>
-                <div class="maintenance-status ${item.status}">${statusText}</div>
-            `;
+            const response = await fetch(`/api/transactions/${this.userData.id}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             
-            container.appendChild(element);
-        });
+            const transactions = await response.json();
+            
+            container.innerHTML = '';
+            
+            if (transactions.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">Нет операций</p>';
+                return;
+            }
+            
+            // Показываем только последние 3 транзакции на главной
+            const recentTransactions = transactions.slice(0, 3);
+            
+            recentTransactions.forEach(transaction => {
+                const item = document.createElement('div');
+                item.className = 'transaction-item';
+                
+                const isPositive = transaction.amount > 0;
+                
+                item.innerHTML = `
+                    <div class="transaction-info">
+                        <div class="transaction-type">${transaction.description}</div>
+                        <div class="transaction-date">${this.formatDate(transaction.date)}</div>
+                    </div>
+                    <div class="transaction-amount ${isPositive ? 'positive' : 'negative'}">
+                        ${isPositive ? '+' : ''}${this.formatMoney(Math.abs(transaction.amount))}
+                    </div>
+                `;
+                
+                container.appendChild(item);
+            });
+            
+        } catch (error) {
+            console.error('Error loading transactions:', error);
+            
+            // Fallback к демо данным
+            const transactions = [
+                { type: 'Начисление за визит', amount: 450, date: '2024-01-20', positive: true },
+                { type: 'Списание бонусов', amount: -320, date: '2024-01-18', positive: false },
+                { type: 'Начисление за визит', amount: 680, date: '2024-01-15', positive: true }
+            ];
+            
+            container.innerHTML = '';
+            
+            transactions.forEach(transaction => {
+                const item = document.createElement('div');
+                item.className = 'transaction-item';
+                
+                item.innerHTML = `
+                    <div class="transaction-info">
+                        <div class="transaction-type">${transaction.type}</div>
+                        <div class="transaction-date">${this.formatDate(transaction.date)}</div>
+                    </div>
+                    <div class="transaction-amount ${transaction.positive ? 'positive' : 'negative'}">
+                        ${transaction.positive ? '+' : ''}${this.formatMoney(Math.abs(transaction.amount))}
+                    </div>
+                `;
+                
+                container.appendChild(item);
+            });
+        }
+    }
+
+    async loadVisitHistory() {
+        const container = document.getElementById('history-list');
+        
+        try {
+            if (!this.userData?.id) {
+                throw new Error('User ID not available');
+            }
+            
+            const response = await fetch(`/api/visits/${this.userData.id}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const visits = await response.json();
+            
+            container.innerHTML = '';
+            
+            if (visits.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">История пуста</p>';
+                return;
+            }
+            
+            visits.forEach(visit => {
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                
+                // Формируем список услуг из массива services
+                const servicesList = visit.services && visit.services.length > 0 
+                    ? visit.services.map(s => s.name || s).join(', ')
+                    : 'Услуги не указаны';
+                
+                item.innerHTML = `
+                    <div class="history-header">
+                        <div class="history-title">${visit.title}</div>
+                        <div class="history-amount">${this.formatMoney(visit.amount)}</div>
+                    </div>
+                    <div class="history-date">${this.formatDate(visit.date)}</div>
+                    <div style="margin-top: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
+                        ${servicesList}
+                    </div>
+                    ${visit.bonusEarned ? `<div style="margin-top: 4px; font-size: 12px; color: #4CAF50;">+${this.formatMoney(visit.bonusEarned)} бонусов</div>` : ''}
+                `;
+                
+                item.addEventListener('click', () => this.showVisitDetails(visit));
+                container.appendChild(item);
+            });
+            
+        } catch (error) {
+            console.error('Error loading visit history:', error);
+            
+            // Fallback к демо данным
+            const visits = [
+                { id: 1, title: 'Чек №12345', amount: 8500, date: '2024-01-20', services: ['Замена масла', 'Диагностика'] },
+                { id: 2, title: 'Чек №12344', amount: 15300, date: '2024-01-15', services: ['ТО-15000', 'Замена фильтров'] },
+                { id: 3, title: 'Чек №12343', amount: 3200, date: '2024-01-10', services: ['Развал-схождение'] }
+            ];
+            
+            container.innerHTML = '';
+            
+            visits.forEach(visit => {
+                const item = document.createElement('div');
+                item.className = 'history-item';
+                
+                item.innerHTML = `
+                    <div class="history-header">
+                        <div class="history-title">${visit.title}</div>
+                        <div class="history-amount">${this.formatMoney(visit.amount)}</div>
+                    </div>
+                    <div class="history-date">${this.formatDate(visit.date)}</div>
+                    <div style="margin-top: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
+                        ${visit.services.join(', ')}
+                    </div>
+                `;
+                
+                item.addEventListener('click', () => this.showVisitDetails(visit));
+                container.appendChild(item);
+            });
+        }
+    }
+
+    async loadMaintenanceData() {
+        const container = document.getElementById('maintenance-overview');
+        
+        try {
+            if (!this.userData?.id) {
+                throw new Error('User ID not available');
+            }
+            
+            const response = await fetch(`/api/maintenance/${this.userData.id}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const maintenanceItems = await response.json();
+            
+            container.innerHTML = '';
+            
+            if (maintenanceItems.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">Нет данных о ТО</p>';
+                return;
+            }
+            
+            maintenanceItems.forEach(item => {
+                const element = document.createElement('div');
+                element.className = 'maintenance-item';
+                
+                let statusText = '';
+                switch (item.status) {
+                    case 'ok': statusText = 'В порядке'; break;
+                    case 'soon': statusText = 'Скоро'; break;
+                    case 'overdue': statusText = 'Просрочено'; break;
+                    case 'never': statusText = 'Не делали'; break;
+                    default: statusText = item.status;
+                }
+                
+                element.innerHTML = `
+                    <div class="maintenance-info">
+                        <div class="maintenance-title">${item.title}</div>
+                        <div class="maintenance-subtitle">${item.subtitle}</div>
+                        ${item.lastPerformed ? `<div style="font-size: 12px; color: var(--tg-theme-hint-color);">Последнее: ${this.formatDate(item.lastPerformed)} (${item.lastMileage} км)</div>` : ''}
+                    </div>
+                    <div class="maintenance-status ${item.status}">${statusText}</div>
+                `;
+                
+                container.appendChild(element);
+            });
+            
+        } catch (error) {
+            console.error('Error loading maintenance data:', error);
+            
+            // Fallback к демо данным
+            const maintenanceItems = [
+                { id: 1, title: '🛢️ Замена масла', subtitle: 'Каждые 10,000 км', status: 'soon', lastKm: 48500, nextKm: 50000 },
+                { id: 2, title: '🔧 ТО-15000', subtitle: 'Каждые 15,000 км', status: 'ok', lastKm: 45000, nextKm: 60000 },
+                { id: 3, title: '🛞 Замена колодок', subtitle: 'По износу', status: 'overdue', lastKm: 35000, nextKm: 45000 },
+                { id: 4, title: '⚙️ Развал-схождение', subtitle: 'Каждые 20,000 км', status: 'never', lastKm: null, nextKm: null }
+            ];
+            
+            container.innerHTML = '';
+            
+            maintenanceItems.forEach(item => {
+                const element = document.createElement('div');
+                element.className = 'maintenance-item';
+                
+                let statusText = '';
+                switch (item.status) {
+                    case 'ok': statusText = 'В порядке'; break;
+                    case 'soon': statusText = 'Скоро'; break;
+                    case 'overdue': statusText = 'Просрочено'; break;
+                    case 'never': statusText = 'Не делали'; break;
+                }
+                
+                element.innerHTML = `
+                    <div class="maintenance-info">
+                        <div class="maintenance-title">${item.title}</div>
+                        <div class="maintenance-subtitle">${item.subtitle}</div>
+                    </div>
+                    <div class="maintenance-status ${item.status}">${statusText}</div>
+                `;
+                
+                container.appendChild(element);
+            });
+        }
     }
 
     setupEventListeners() {
@@ -322,19 +475,40 @@ class LoyaltyApp {
         const availableAmount = parseInt(document.getElementById('available-redeem').textContent.replace(/[^\d]/g, ''));
         
         if (availableAmount > 0) {
-            // Имитация запроса к серверу
-            this.showLoading('Списание бонусов...');
-            
-            await this.sleep(1000);
-            
-            // Обновляем баланс
-            this.userLoyaltyData.balance -= availableAmount;
-            this.userLoyaltyData.totalRedeemed += availableAmount;
-            
-            this.updateUserInterface();
-            this.closeModal();
-            
-            this.tg.showAlert(`Успешно списано ${this.formatMoney(availableAmount)} бонусов!`);
+            try {
+                this.showLoading('Списание бонусов...');
+                
+                const response = await fetch('/api/redeem', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: this.userData?.id,
+                        amount: availableAmount,
+                        description: `Списание ${availableAmount} бонусов через Mini App`
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    // Обновляем баланс из ответа сервера
+                    this.userLoyaltyData.balance = result.newBalance;
+                    this.userLoyaltyData.totalRedeemed += availableAmount;
+                    
+                    this.updateUserInterface();
+                    this.closeModal();
+                    
+                    this.tg.showAlert(result.message || `Успешно списано ${this.formatMoney(availableAmount)} бонусов!`);
+                } else {
+                    throw new Error(result.message || 'Ошибка при списании бонусов');
+                }
+                
+            } catch (error) {
+                console.error('Error redeeming bonuses:', error);
+                this.tg.showAlert(`Ошибка: ${error.message}`);
+            }
         }
     }
 

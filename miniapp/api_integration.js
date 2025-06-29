@@ -1,5 +1,5 @@
 // API интеграция Mini App с системой лояльности
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Подключение к базе данных лояльности
@@ -8,80 +8,72 @@ const dbPath = path.join(__dirname, '..', 'loyalty.db');
 // Проверяем существование базы данных и создаем при необходимости
 let db;
 try {
-    db = new Database(dbPath);
+    db = new sqlite3.Database(dbPath);
     console.log('✅ База данных подключена:', dbPath);
 } catch (error) {
     console.error('❌ Ошибка подключения к базе данных:', error);
     // Создаем новую базу данных
-    db = new Database(dbPath);
+    db = new sqlite3.Database(dbPath);
     console.log('✅ Создана новая база данных:', dbPath);
 }
 
 // ВСЕГДА создаем таблицы при запуске (если их нет)
-try {
-    db.exec(`
-        -- Таблица пользователей
-        CREATE TABLE IF NOT EXISTS user_map (
-            tg_id INTEGER PRIMARY KEY,
-            agent_id TEXT NOT NULL,
-            phone TEXT,
-            fullname TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        -- Таблица бонусов
-        CREATE TABLE IF NOT EXISTS bonuses (
-            agent_id TEXT PRIMARY KEY,
-            balance INTEGER DEFAULT 0
-        );
-        
-        -- Таблица транзакций бонусов
-        CREATE TABLE IF NOT EXISTS bonus_transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            agent_id TEXT NOT NULL,
-            transaction_type TEXT NOT NULL,
-            amount INTEGER NOT NULL,
-            description TEXT,
-            related_demand_id TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        -- Таблица уровней лояльности
-        CREATE TABLE IF NOT EXISTS loyalty_levels (
-            agent_id TEXT PRIMARY KEY,
-            level_id INTEGER DEFAULT 1,
-            total_spent INTEGER DEFAULT 0
-        );
-        
-        -- Таблица истории обслуживания
-        CREATE TABLE IF NOT EXISTS maintenance_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            agent_id TEXT NOT NULL,
-            work_id TEXT NOT NULL,
-            performed_date DATE NOT NULL,
-            mileage INTEGER,
-            source TEXT DEFAULT 'manual',
-            notes TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-    `);
+db.serialize(() => {
+    // Создаем таблицы
+    db.run(`CREATE TABLE IF NOT EXISTS user_map (
+        tg_id INTEGER PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        phone TEXT,
+        fullname TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    
+    db.run(`CREATE TABLE IF NOT EXISTS bonuses (
+        agent_id TEXT PRIMARY KEY,
+        balance INTEGER DEFAULT 0
+    )`);
+    
+    db.run(`CREATE TABLE IF NOT EXISTS bonus_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT NOT NULL,
+        transaction_type TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        description TEXT,
+        related_demand_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    
+    db.run(`CREATE TABLE IF NOT EXISTS loyalty_levels (
+        agent_id TEXT PRIMARY KEY,
+        level_id INTEGER DEFAULT 1,
+        total_spent INTEGER DEFAULT 0
+    )`);
+    
+    db.run(`CREATE TABLE IF NOT EXISTS maintenance_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id TEXT NOT NULL,
+        work_id TEXT NOT NULL,
+        performed_date DATE NOT NULL,
+        mileage INTEGER,
+        source TEXT DEFAULT 'manual',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    
     console.log('✅ Базовые таблицы созданы/проверены');
     
     // Вставляем тестового пользователя для демо
-    db.exec(`
-        INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) 
-        VALUES (123456789, 'test_agent_1', '+7900123456', 'Тестовый Пользователь');
+    db.run(`INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) 
+        VALUES (123456789, 'test_agent_1', '+7900123456', 'Тестовый Пользователь')`);
         
-        INSERT OR IGNORE INTO bonuses (agent_id, balance) 
-        VALUES ('test_agent_1', 250000);
+    db.run(`INSERT OR IGNORE INTO bonuses (agent_id, balance) 
+        VALUES ('test_agent_1', 250000)`);
         
-        INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent) 
-        VALUES ('test_agent_1', 2, 1500000);
-    `);
+    db.run(`INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent) 
+        VALUES ('test_agent_1', 2, 1500000)`);
+        
     console.log('✅ Тестовые данные добавлены');
-} catch (initError) {
-    console.error('❌ Ошибка инициализации таблиц:', initError);
-}
+});
 
 class LoyaltyAPI {
     constructor() {
@@ -90,30 +82,34 @@ class LoyaltyAPI {
 
     // Получить ID агента по Telegram ID
     getAgentId(telegramId) {
-        try {
-            const stmt = this.db.prepare("SELECT agent_id FROM user_map WHERE tg_id = ?");
-            const row = stmt.get(telegramId);
-            return Promise.resolve(row ? row.agent_id : null);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+        return new Promise((resolve, reject) => {
+            this.db.get("SELECT agent_id FROM user_map WHERE tg_id = ?", [telegramId], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row ? row.agent_id : null);
+                }
+            });
+        });
     }
 
     // Получить баланс пользователя
     getBalance(agentId) {
-        try {
-            const stmt = this.db.prepare("SELECT balance FROM bonuses WHERE agent_id = ?");
-            const row = stmt.get(agentId);
-            return Promise.resolve(row ? row.balance : 0);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+        return new Promise((resolve, reject) => {
+            this.db.get("SELECT balance FROM bonuses WHERE agent_id = ?", [agentId], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row ? row.balance : 0);
+                }
+            });
+        });
     }
 
     // Получить уровень лояльности
     getLoyaltyLevel(agentId) {
-        try {
-            const stmt = this.db.prepare(`
+        return new Promise((resolve, reject) => {
+            const query = `
                 SELECT 
                     level_id,
                     total_spent,
@@ -127,84 +123,101 @@ class LoyaltyAPI {
                     ), 0) as total_redeemed
                 FROM loyalty_levels 
                 WHERE agent_id = ?
-            `);
-            const row = stmt.get(agentId, agentId, agentId);
-            return Promise.resolve(row || { level_id: 1, total_earned: 0, total_redeemed: 0, total_spent: 0 });
-        } catch (error) {
-            return Promise.reject(error);
-        }
+            `;
+            this.db.get(query, [agentId, agentId, agentId], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row || { level_id: 1, total_earned: 0, total_redeemed: 0, total_spent: 0 });
+                }
+            });
+        });
     }
 
     // Получить транзакции пользователя
     getTransactions(agentId, limit = 20) {
-        try {
-            const stmt = this.db.prepare(`
+        return new Promise((resolve, reject) => {
+            const query = `
                 SELECT transaction_type, amount, description, created_at, related_demand_id
                 FROM bonus_transactions 
                 WHERE agent_id = ? 
                 ORDER BY created_at DESC 
                 LIMIT ?
-            `);
-            const rows = stmt.all(agentId, limit);
-            return Promise.resolve(rows || []);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+            `;
+            this.db.all(query, [agentId, limit], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows || []);
+                }
+            });
+        });
     }
 
     // Получить данные ТО пользователя
     getMaintenanceData(agentId) {
-        try {
-            const stmt = this.db.prepare(`
+        return new Promise((resolve, reject) => {
+            const query = `
                 SELECT work_id, performed_date, mileage, source, notes, created_at
                 FROM maintenance_history 
                 WHERE agent_id = ? 
                 ORDER BY performed_date DESC
-            `);
-            const rows = stmt.all(agentId);
-            return Promise.resolve(rows || []);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+            `;
+            this.db.all(query, [agentId], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows || []);
+                }
+            });
+        });
     }
 
     // Получить контактную информацию пользователя
     getUserContact(telegramId) {
-        try {
-            const stmt = this.db.prepare("SELECT phone, fullname FROM user_map WHERE tg_id = ?");
-            const row = stmt.get(telegramId);
-            return Promise.resolve(row || { phone: null, fullname: null });
-        } catch (error) {
-            return Promise.reject(error);
-        }
+        return new Promise((resolve, reject) => {
+            this.db.get("SELECT phone, fullname FROM user_map WHERE tg_id = ?", [telegramId], (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row || { phone: null, fullname: null });
+                }
+            });
+        });
     }
 
     // Добавить транзакцию бонусов
     addBonusTransaction(agentId, transactionType, amount, description, demandId = null) {
-        try {
-            const stmt = this.db.prepare(`
+        return new Promise((resolve, reject) => {
+            const query = `
                 INSERT INTO bonus_transactions (agent_id, transaction_type, amount, description, related_demand_id, created_at)
                 VALUES (?, ?, ?, ?, ?, datetime('now'))
-            `);
-            const result = stmt.run(agentId, transactionType, amount, description, demandId);
-            return Promise.resolve(result.lastInsertRowid);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+            `;
+            this.db.run(query, [agentId, transactionType, amount, description, demandId], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(this.lastID);
+                }
+            });
+        });
     }
 
     // Добавить запись о ТО
     addMaintenanceRecord(agentId, workId, performedDate, mileage, notes = '') {
-        try {
-            const stmt = this.db.prepare(`
+        return new Promise((resolve, reject) => {
+            const query = `
                 INSERT INTO maintenance_history (agent_id, work_id, performed_date, mileage, source, notes, created_at)
                 VALUES (?, ?, ?, ?, 'manual', ?, datetime('now'))
-            `);
-            const result = stmt.run(agentId, workId, performedDate, mileage, notes);
-            return Promise.resolve(result.lastInsertRowid);
-        } catch (error) {
-            return Promise.reject(error);
-        }
+            `;
+            this.db.run(query, [agentId, workId, performedDate, mileage, notes], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(this.lastID);
+                }
+            });
+        });
     }
 
     // Получить последние посещения (через МойСклад API)
@@ -280,6 +293,139 @@ class LoyaltyAPI {
             console.error('Error getting client statistics:', error);
             throw error;
         }
+    }
+
+    // Поиск контрагента в МойСклад по номеру телефона
+    async findAgentByPhone(phone) {
+        try {
+            // Здесь должен быть настоящий вызов к МойСклад API
+            // Для демо возвращаем моковые данные
+            
+            // Очищаем номер телефона от лишних символов
+            const cleanPhone = phone.replace(/[^\d]/g, '');
+            
+            // Имитируем поиск в МойСклад
+            console.log(`🔍 Searching for agent with phone: ${cleanPhone}`);
+            
+            // Моковая логика: если номер содержит '123', то пользователь найден
+            if (cleanPhone.includes('123')) {
+                return 'existing_agent_' + cleanPhone.slice(-6);
+            }
+            
+            return null; // Пользователь не найден в МойСклад
+        } catch (error) {
+            console.error('Error finding agent by phone:', error);
+            throw error;
+        }
+    }
+
+    // Создание нового контрагента в МойСклад
+    async createNewAgent(name, phone) {
+        try {
+            // Здесь должен быть настоящий вызов к МойСклад API
+            // Для демо генерируем фейковый ID
+            
+            console.log(`👤 Creating new agent in MoySklad: ${name}, ${phone}`);
+            
+            const agentId = 'new_agent_' + Date.now();
+            
+            // Моковая задержка API
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            console.log(`✅ Agent created with ID: ${agentId}`);
+            
+            return agentId;
+        } catch (error) {
+            console.error('Error creating new agent:', error);
+            throw error;
+        }
+    }
+
+    // Регистрация связи пользователя
+    async registerUserMapping(telegramId, agentId, phone, fullname) {
+        return new Promise((resolve, reject) => {
+            // Сначала пытаемся вставить нового пользователя
+            const insertQuery = `
+                INSERT OR REPLACE INTO user_map (tg_id, agent_id, phone, fullname, created_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            `;
+            
+            this.db.run(insertQuery, [telegramId, agentId, phone, fullname], function(err) {
+                if (err) {
+                    console.error('Error inserting user mapping:', err);
+                    reject(err);
+                    return;
+                }
+                
+                console.log(`✅ User mapping created: TG=${telegramId} -> Agent=${agentId}`);
+                
+                // Создаем запись в таблице бонусов если её нет
+                const bonusQuery = `
+                    INSERT OR IGNORE INTO bonuses (agent_id, balance)
+                    VALUES (?, 10000)
+                `;
+                
+                this.db.run(bonusQuery, [agentId], function(bonusErr) {
+                    if (bonusErr) {
+                        console.error('Error creating bonus record:', bonusErr);
+                    }
+                    
+                    // Создаем запись уровня лояльности если её нет
+                    const loyaltyQuery = `
+                        INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent)
+                        VALUES (?, 1, 0)
+                    `;
+                    
+                    this.db.run(loyaltyQuery, [agentId], function(loyaltyErr) {
+                        if (loyaltyErr) {
+                            console.error('Error creating loyalty record:', loyaltyErr);
+                        }
+                        
+                        resolve(this.lastID || this.changes);
+                    });
+                });
+            });
+        });
+    }
+
+    // Обновление баланса пользователя
+    async updateBalance(agentId, deltaAmount) {
+        return new Promise((resolve, reject) => {
+            const updateQuery = `
+                UPDATE bonuses 
+                SET balance = balance + ? 
+                WHERE agent_id = ?
+            `;
+            
+            this.db.run(updateQuery, [deltaAmount, agentId], function(err) {
+                if (err) {
+                    console.error('Error updating balance:', err);
+                    reject(err);
+                    return;
+                }
+                
+                // Если записи нет, создаем её
+                if (this.changes === 0) {
+                    const insertQuery = `
+                        INSERT INTO bonuses (agent_id, balance)
+                        VALUES (?, ?)
+                    `;
+                    
+                    db.run(insertQuery, [agentId, deltaAmount], function(insertErr) {
+                        if (insertErr) {
+                            console.error('Error inserting balance record:', insertErr);
+                            reject(insertErr);
+                        } else {
+                            console.log(`💰 Balance created for ${agentId}: ${deltaAmount > 0 ? '+' : ''}${deltaAmount / 100}₽`);
+                            resolve(true);
+                        }
+                    });
+                } else {
+                    console.log(`💰 Balance updated for ${agentId}: ${deltaAmount > 0 ? '+' : ''}${deltaAmount / 100}₽`);
+                    resolve(true);
+                }
+            });
+        });
     }
 }
 
