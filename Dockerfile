@@ -1,13 +1,16 @@
 FROM node:18-alpine
 
+# Install build dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY miniapp/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (use npm install instead of npm ci to avoid lock file issues)
+RUN npm install --production
 
 # Copy app source
 COPY miniapp/ .
