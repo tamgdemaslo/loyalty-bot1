@@ -412,4 +412,7 @@ app.listen(PORT, () => {
     console.log(`🚀 Сервер Telegram Mini App запущен на порту ${PORT}`);
     console.log(`📱 Откройте приложение: http://localhost:${PORT}`);
     console.log(`🔗 Для Telegram WebApp используйте: https://your-domain.com`);
+    console.log(`🌍 NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`🔑 BOT_TOKEN найден: ${BOT_TOKEN ? 'Да' : 'Нет'}`);
+    console.log(`💾 База данных инициализирована: ${loyaltyAPI.db ? 'Да' : 'Нет'}`);
 });

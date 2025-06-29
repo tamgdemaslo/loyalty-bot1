@@ -4,7 +4,81 @@ const path = require('path');
 
 // Подключение к базе данных лояльности
 const dbPath = path.join(__dirname, '..', 'loyalty.db');
-const db = new Database(dbPath);
+
+// Проверяем существование базы данных и создаем при необходимости
+let db;
+try {
+    db = new Database(dbPath);
+    console.log('✅ База данных подключена:', dbPath);
+} catch (error) {
+    console.error('❌ Ошибка подключения к базе данных:', error);
+    // Создаем новую базу данных
+    db = new Database(dbPath);
+    console.log('✅ Создана новая база данных:', dbPath);
+    
+    // Создаем базовые таблицы
+    try {
+        db.exec(`
+            -- Таблица пользователей
+            CREATE TABLE IF NOT EXISTS user_map (
+                tg_id INTEGER PRIMARY KEY,
+                agent_id TEXT NOT NULL,
+                phone TEXT,
+                fullname TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            -- Таблица бонусов
+            CREATE TABLE IF NOT EXISTS bonuses (
+                agent_id TEXT PRIMARY KEY,
+                balance INTEGER DEFAULT 0
+            );
+            
+            -- Таблица транзакций бонусов
+            CREATE TABLE IF NOT EXISTS bonus_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                transaction_type TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                description TEXT,
+                related_demand_id TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            -- Таблица уровней лояльности
+            CREATE TABLE IF NOT EXISTS loyalty_levels (
+                agent_id TEXT PRIMARY KEY,
+                level_id INTEGER DEFAULT 1,
+                total_spent INTEGER DEFAULT 0
+            );
+            
+            -- Таблица истории обслуживания
+            CREATE TABLE IF NOT EXISTS maintenance_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id TEXT NOT NULL,
+                work_id TEXT NOT NULL,
+                performed_date DATE NOT NULL,
+                mileage INTEGER,
+                source TEXT DEFAULT 'manual',
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            -- Вставляем тестового пользователя для демо
+            INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) 
+            VALUES (123456789, 'test_agent_1', '+7900123456', 'Тестовый Пользователь');
+            
+            INSERT OR IGNORE INTO bonuses (agent_id, balance) 
+            VALUES ('test_agent_1', 250000);
+            
+            INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent) 
+            VALUES ('test_agent_1', 2, 1500000);
+        `);
+        console.log('✅ Базовые таблицы созданы');
+    } catch (initError) {
+        console.error('❌ Ошибка инициализации таблиц:', initError);
+    }
+}
 
 class LoyaltyAPI {
     constructor() {
