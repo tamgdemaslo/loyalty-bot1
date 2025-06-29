@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import ReplyKeyboardMarkup, InlineKeyboardBuilder
 from bot.yclients import services, staff, free_slots, book_dates, create_record, format_date_russian
 from bot.keyboards import shipments_kb, main_menu_premium, balance_detail_kb, profile_menu_kb, support_menu_kb, start_choice_kb, mini_app_menu_kb
 from bot.db import register_mapping, user_contact
-from bot.config import REDEEM_CAP
+from bot.config import REDEEM_CAP, MINIAPP_URL
 from bot.db import (get_agent_id, register_mapping, get_balance, change_balance, conn, get_loyalty_level, init_loyalty_level)
 from bot.moysklad import (find_agent_by_phone, fetch_shipments, fetch_demand_full, apply_discount)
 from bot.moysklad import MS_BASE, HEADERS
@@ -140,7 +140,7 @@ def register(dp):
 
         await m.answer("✅ Вы авторизованы.\nВыберите действие:",
                     reply_markup=mini_app_menu_kb())
-            return
+        return
 
         # ─── новый клиент: спрашиваем ФИО и сохраняем номер в FSM ──────────────
         await state.set_state(Auth.wait_name)
@@ -1500,7 +1500,7 @@ def register(dp):
         kb = InlineKeyboardBuilder()
         kb.button(
             text="🚀 Открыть приложение",
-            web_app=types.WebAppInfo(url="https://loyalty-app-test.loca.lt")
+            web_app=types.WebAppInfo(url=MINIAPP_URL)
         )
         kb.adjust(1)
         
@@ -1511,17 +1511,37 @@ def register(dp):
         )
     
     # Обработчик кнопки "🌟 Приложение" из меню
-    @dp.message(F.text.in_(["🌟 Приложение", "🌟 Веб-приложение (скоро)"]))
+    @dp.message(F.text.in_(["🌟 Приложение"]))
     async def msg_open_app(m: types.Message):
-        """Уведомление о том, что приложение в разработке"""
+        """Открытие Mini App из меню"""
+        aid = get_agent_id(m.from_user.id)
+        if not aid:
+            return await m.answer(
+                "⚠️ Для доступа к приложению необходима авторизация.\n"
+                "Пожалуйста, выполните /start"
+            )
+        
+        message = (
+            "🌟 **Приложение системы лояльности**\n\n"
+            "✨ Добро пожаловать в современное приложение!\n\n"
+            "📱 Здесь доступны все функции:\n"
+            "• Просмотр баланса и статистики\n"
+            "• История посещений и транзакций\n"
+            "• Управление техобслуживанием\n"
+            "• Удобная навигация и дизайн\n\n"
+            "Нажмите кнопку ниже для продолжения:"
+        )
+        
+        kb = InlineKeyboardBuilder()
+        kb.button(
+            text="🚀 Открыть приложение",
+            web_app=types.WebAppInfo(url=MINIAPP_URL)
+        )
+        kb.adjust(1)
+        
         await m.answer(
-            "🚧 **Веб-приложение находится в разработке**\n\n"
-            "🔜 Скоро будет доступно:\n"
-            "• Современный интерфейс\n"
-            "• Удобная навигация\n"
-            "• Расширенная аналитика\n"
-            "• Быстрый доступ ко всем функциям\n\n"
-            "А пока используйте все функции прямо в чате! 😊",
+            message,
+            reply_markup=kb.as_markup(),
             parse_mode="Markdown"
         )
     

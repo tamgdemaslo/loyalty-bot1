@@ -1,5 +1,9 @@
 FROM node:18-alpine
 
+# Аргумент для URL Mini App
+ARG MINIAPP_URL=https://loyalty-bot1.onrender.com
+ENV MINIAPP_URL=$MINIAPP_URL
+
 # Install build dependencies for better-sqlite3
 RUN apk add --no-cache python3 make g++
 

@@ -8,6 +8,7 @@ from aiogram import types
 from .formatting import fmt_date_local, fmt_money
 from .loyalty import get_level_info, calculate_level_by_spent, get_redeem_cap
 from .db import get_balance, get_agent_id
+from .config import MINIAPP_URL
 from datetime import datetime
 import random
 
@@ -81,7 +82,7 @@ def smart_welcome_message(user_name: str, user_id: int) -> tuple[str, types.Inli
         kb.row(
             types.InlineKeyboardButton(
                 text="🌟 Открыть приложение", 
-                web_app=types.WebAppInfo(url="https://loyalty-app-test.loca.lt")
+                web_app=types.WebAppInfo(url=MINIAPP_URL)
             )
         )
         kb.row(
@@ -106,7 +107,7 @@ def smart_welcome_message(user_name: str, user_id: int) -> tuple[str, types.Inli
         kb.row(
             types.InlineKeyboardButton(
                 text="🌟 Открыть приложение", 
-                web_app=types.WebAppInfo(url="https://loyalty-app-test.loca.lt")
+                web_app=types.WebAppInfo(url=MINIAPP_URL)
             )
         )
         kb.row(
@@ -131,7 +132,7 @@ def smart_welcome_message(user_name: str, user_id: int) -> tuple[str, types.Inli
         kb.row(
             types.InlineKeyboardButton(
                 text="🌟 VIP-приложение", 
-                web_app=types.WebAppInfo(url="https://loyalty-app-test.loca.lt")
+                web_app=types.WebAppInfo(url=MINIAPP_URL)
             )
         )
         kb.row(

@@ -19,6 +19,7 @@ if [ ! -f ".env" ]; then
 BOT_TOKEN=7914899311:AAGY4CjuMqZX3w1eS7zCM2yNMW3312xCwPE
 PORT=3000
 NODE_ENV=development
+MINIAPP_URL=https://loyalty-bot1.onrender.com
 EOF
     echo "✅ Файл .env создан"
 fi

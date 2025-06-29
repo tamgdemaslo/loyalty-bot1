@@ -2,6 +2,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram import types
 from aiogram.types import WebAppInfo
 from .formatting import fmt_date_local
+from .config import MINIAPP_URL
 
 # Эмодзи грузовика
 E_TRUCK = "🚛"
@@ -94,7 +95,7 @@ def start_choice_kb():
     kb.row(
         types.InlineKeyboardButton(
             text="🌟 Открыть приложение", 
-            web_app=types.WebAppInfo(url="http://localhost:3000")
+            web_app=types.WebAppInfo(url=MINIAPP_URL)
         )
     )
     kb.row(
@@ -110,7 +111,7 @@ def mini_app_menu_kb():
     kb.row(
         types.KeyboardButton(
             text="🌟 Приложение", 
-            web_app=types.WebAppInfo(url="http://localhost:3000")
+            web_app=types.WebAppInfo(url=MINIAPP_URL)
         ),
         types.KeyboardButton(text="💎 Баланс")
     )
