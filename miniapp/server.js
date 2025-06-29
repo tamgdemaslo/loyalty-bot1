@@ -16,7 +16,12 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Telegram Bot Token для валидации
-const BOT_TOKEN = process.env.BOT_TOKEN || '7914899311:AAGY4CjuMqZX3w1eS7zCM2yNMW3312xCwPE';
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+if (!BOT_TOKEN) {
+    console.error('❌ BOT_TOKEN не найден в переменных окружения');
+    process.exit(1);
+}
 
 // Функция валидации данных из Telegram WebApp
 function validateTelegramWebAppData(initData) {
