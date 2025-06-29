@@ -1,26 +1,26 @@
 // API интеграция Mini App с системой лояльности
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 
 // Подключение к базе данных лояльности
 const dbPath = path.join(__dirname, '..', 'loyalty.db');
 
-// Проверяем существование базы данных и создаем при необходимости
+// Создаем подключение к базе данных
 let db;
 try {
-    db = new sqlite3.Database(dbPath);
+    db = new Database(dbPath);
     console.log('✅ База данных подключена:', dbPath);
 } catch (error) {
     console.error('❌ Ошибка подключения к базе данных:', error);
     // Создаем новую базу данных
-    db = new sqlite3.Database(dbPath);
+    db = new Database(dbPath);
     console.log('✅ Создана новая база данных:', dbPath);
 }
 
-// ВСЕГДА создаем таблицы при запуске (если их нет)
-db.serialize(() => {
+// Создаем таблицы при запуске (если их нет)
+try {
     // Создаем таблицы
-    db.run(`CREATE TABLE IF NOT EXISTS user_map (
+    db.exec(`CREATE TABLE IF NOT EXISTS user_mapping (
         tg_id INTEGER PRIMARY KEY,
         agent_id TEXT NOT NULL,
         phone TEXT,
@@ -28,28 +28,30 @@ db.serialize(() => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     
-    db.run(`CREATE TABLE IF NOT EXISTS bonuses (
+    db.exec(`CREATE TABLE IF NOT EXISTS balances (
         agent_id TEXT PRIMARY KEY,
         balance INTEGER DEFAULT 0
     )`);
     
-    db.run(`CREATE TABLE IF NOT EXISTS bonus_transactions (
+    db.exec(`CREATE TABLE IF NOT EXISTS bonus_transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         agent_id TEXT NOT NULL,
-        transaction_type TEXT NOT NULL,
+        operation_type TEXT NOT NULL,
         amount INTEGER NOT NULL,
         description TEXT,
         related_demand_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     
-    db.run(`CREATE TABLE IF NOT EXISTS loyalty_levels (
+    db.exec(`CREATE TABLE IF NOT EXISTS loyalty_levels (
         agent_id TEXT PRIMARY KEY,
         level_id INTEGER DEFAULT 1,
-        total_spent INTEGER DEFAULT 0
+        total_spent INTEGER DEFAULT 0,
+        total_earned INTEGER DEFAULT 0,
+        total_redeemed INTEGER DEFAULT 0
     )`);
     
-    db.run(`CREATE TABLE IF NOT EXISTS maintenance_history (
+    db.exec(`CREATE TABLE IF NOT EXISTS maintenance_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         agent_id TEXT NOT NULL,
         work_id TEXT NOT NULL,
@@ -63,17 +65,19 @@ db.serialize(() => {
     console.log('✅ Базовые таблицы созданы/проверены');
     
     // Вставляем тестового пользователя для демо
-    db.run(`INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) 
-        VALUES (123456789, 'test_agent_1', '+7900123456', 'Тестовый Пользователь')`);
-        
-    db.run(`INSERT OR IGNORE INTO bonuses (agent_id, balance) 
-        VALUES ('test_agent_1', 250000)`);
-        
-    db.run(`INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent) 
-        VALUES ('test_agent_1', 2, 1500000)`);
-        
+    const insertUser = db.prepare(`INSERT OR IGNORE INTO user_mapping (tg_id, agent_id, phone, fullname) VALUES (?, ?, ?, ?)`);
+    insertUser.run(12345, 'demo_agent_id', '+7123456789', 'Demo User');
+    
+    const insertBalance = db.prepare(`INSERT OR IGNORE INTO balances (agent_id, balance) VALUES (?, ?)`);
+    insertBalance.run('demo_agent_id', 245000); // 2450 рублей в копейках
+    
+    const insertLoyalty = db.prepare(`INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent, total_earned, total_redeemed) VALUES (?, ?, ?, ?, ?)`);
+    insertLoyalty.run('demo_agent_id', 2, 7500000, 542000, 297000); // Все в копейках
+    
     console.log('✅ Тестовые данные добавлены');
-});
+} catch (error) {
+    console.error('❌ Ошибка создания таблиц:', error);
+}
 
 class LoyaltyAPI {
     constructor() {
@@ -81,29 +85,27 @@ class LoyaltyAPI {
     }
 
     // Получить ID агента по Telegram ID
-    getAgentId(telegramId) {
-        return new Promise((resolve, reject) => {
-            this.db.get("SELECT agent_id FROM user_map WHERE tg_id = ?", [telegramId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.agent_id : null);
-                }
-            });
-        });
+    async getAgentId(telegramId) {
+        try {
+            const stmt = this.db.prepare("SELECT agent_id FROM user_mapping WHERE tg_id = ?");
+            const row = stmt.get(telegramId);
+            return row ? row.agent_id : null;
+        } catch (error) {
+            console.error('Error getting agent ID:', error);
+            return null;
+        }
     }
 
     // Получить баланс пользователя
-    getBalance(agentId) {
-        return new Promise((resolve, reject) => {
-            this.db.get("SELECT balance FROM bonuses WHERE agent_id = ?", [agentId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row ? row.balance : 0);
-                }
-            });
-        });
+    async getBalance(agentId) {
+        try {
+            const stmt = this.db.prepare("SELECT balance FROM balances WHERE agent_id = ?");
+            const row = stmt.get(agentId);
+            return row ? row.balance : 0;
+        } catch (error) {
+            console.error('Error getting balance:', error);
+            return 0;
+        }
     }
 
     // Получить уровень лояльности
