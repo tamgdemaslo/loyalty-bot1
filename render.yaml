@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: loyalty-bot1
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+    autoDeploy: true
