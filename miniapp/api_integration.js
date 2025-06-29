@@ -1,5 +1,5 @@
 // API интеграция Mini App с системой лояльности
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Подключение к базе данных лояльности
@@ -8,12 +8,12 @@ const dbPath = path.join(__dirname, '..', 'loyalty.db');
 // Создаем подключение к базе данных
 let db;
 try {
-    db = new Database(dbPath);
+    db = new sqlite3.Database(dbPath);
     console.log('✅ База данных подключена:', dbPath);
 } catch (error) {
     console.error('❌ Ошибка подключения к базе данных:', error);
     // Создаем новую базу данных
-    db = new Database(dbPath);
+    db = new sqlite3.Database(dbPath);
     console.log('✅ Создана новая база данных:', dbPath);
 }
 
