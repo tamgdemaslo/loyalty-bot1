@@ -104,15 +104,12 @@ def start_choice_kb():
     return kb.as_markup()
 
 def mini_app_menu_kb():
-    """Главное меню с веб-приложением"""
+    """Главное меню без WebApp (обычные кнопки)"""
     kb = ReplyKeyboardBuilder()
     
-    # Первый ряд - веб-приложение и баланс
+    # Первый ряд - приложение и баланс
     kb.row(
-        types.KeyboardButton(
-            text="🌟 Приложение", 
-            web_app=types.WebAppInfo(url=MINIAPP_URL)
-        ),
+        types.KeyboardButton(text="🌟 Приложение"),
         types.KeyboardButton(text="💎 Баланс")
     )
     
