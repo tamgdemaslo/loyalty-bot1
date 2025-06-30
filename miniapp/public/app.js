@@ -76,9 +76,9 @@ class LoyaltyApp {
                 const errorData = await response.json().catch(() => null);
                 console.error('API Error:', errorData);
                 
-                // Если пользователь не зарегистрирован (404), показываем форму регистрации
-                if (response.status === 404) {
-                    this.showRegistrationForm();
+                // Если пользователь не зарегистрирован (404), показываем форму авторизации по телефону
+                if (response.status === 404 && errorData?.requiresPhoneAuth) {
+                    this.showPhoneAuthForm(errorData);
                     return;
                 }
                 
@@ -495,31 +495,26 @@ class LoyaltyApp {
         document.getElementById('main-app').style.display = 'block';
     }
     
-    showRegistrationForm() {
+    showPhoneAuthForm(authData) {
         document.getElementById('loading').style.display = 'none';
         document.getElementById('main-app').innerHTML = `
             <div style="padding: 40px 20px; text-align: center;">
-                <div style="font-size: 64px; margin-bottom: 24px;">📱</div>
-                <h2 style="margin-bottom: 16px;">Регистрация в системе лояльности</h2>
+                <div style="font-size: 64px; margin-bottom: 24px;">📞</div>
+                <h2 style="margin-bottom: 16px;">Авторизация</h2>
                 <p style="color: var(--tg-theme-hint-color); margin-bottom: 32px;">
-                    Добро пожаловать! Для продолжения необходимо зарегистрироваться.
+                    Добро пожаловать, ${authData?.firstName || 'пользователь'}!<br>
+                    Для доступа к приложению введите номер телефона.
                 </p>
                 
-                <div id="registration-form" style="max-width: 300px; margin: 0 auto;">
-                    <div style="margin-bottom: 16px; text-align: left;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Имя и фамилия:</label>
-                        <input type="text" id="user-name-input" placeholder="Иван Петров" 
-                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
-                    </div>
-                    
+                <div id="phone-auth-form" style="max-width: 300px; margin: 0 auto;">
                     <div style="margin-bottom: 24px; text-align: left;">
                         <label style="display: block; margin-bottom: 8px; font-weight: 500;">Номер телефона:</label>
                         <input type="tel" id="user-phone-input" placeholder="+7 123 456-78-90" 
                                style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
                     </div>
                     
-                    <button class="btn-primary" onclick="loyaltyApp.registerUser()" style="width: 100%; margin-bottom: 16px;">
-                        Зарегистрироваться
+                    <button class="btn-primary" onclick="loyaltyApp.authorizeByPhone()" style="width: 100%; margin-bottom: 16px;">
+                        Войти
                     </button>
                     
                     <button class="btn-secondary" onclick="window.Telegram.WebApp.close()" style="width: 100%;">
@@ -527,21 +522,32 @@ class LoyaltyApp {
                     </button>
                 </div>
                 
-                <div id="registration-loading" style="display: none; padding: 20px;">
+                <div id="auth-loading" style="display: none; padding: 20px;">
                     <div style="font-size: 24px; margin-bottom: 16px;">⏳</div>
-                    <p>Регистрация...</p>
+                    <p>Авторизация...</p>
+                </div>
+                
+                <div style="margin-top: 32px; padding: 16px; background: var(--tg-theme-secondary-bg-color, #f0f0f0); border-radius: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
+                    <strong>Как это работает:</strong><br>
+                    • Если вы уже клиент - найдем ваш аккаунт<br>
+                    • Если новый клиент - создадим профиль<br>
+                    • Получите доступ ко всем бонусам
                 </div>
             </div>
         `;
         document.getElementById('main-app').style.display = 'block';
     }
     
-    async registerUser() {
-        const name = document.getElementById('user-name-input').value.trim();
+    showRegistrationForm() {
+        // Эта функция больше не используется, заменена на showPhoneAuthForm
+        this.showPhoneAuthForm({ firstName: 'пользователь' });
+    }
+    
+    async authorizeByPhone() {
         const phone = document.getElementById('user-phone-input').value.trim();
         
-        if (!name || !phone) {
-            this.tg.showAlert('Пожалуйста, заполните все поля');
+        if (!phone) {
+            this.tg.showAlert('Пожалуйста, введите номер телефона');
             return;
         }
         
@@ -553,10 +559,10 @@ class LoyaltyApp {
         }
         
         try {
-            document.getElementById('registration-form').style.display = 'none';
-            document.getElementById('registration-loading').style.display = 'block';
+            document.getElementById('phone-auth-form').style.display = 'none';
+            document.getElementById('auth-loading').style.display = 'block';
             
-            const response = await fetch('/api/register', {
+            const response = await fetch('/api/auth-phone', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -564,32 +570,43 @@ class LoyaltyApp {
                 body: JSON.stringify({
                     initData: this.tg.initData || '',
                     phone: phone.replace(/[\s-]/g, ''),
-                    name: name
+                    user: this.tg.initDataUnsafe?.user || null
                 })
             });
             
             const result = await response.json();
             
             if (response.ok && result.success) {
-                this.tg.showAlert(
-                    `Регистрация успешно завершена!\n\n` +
-                    `🎉 Вам начислено ${result.bonusAwarded} приветственных бонусов!`
-                );
+                // Сохраняем данные пользователя
+                this.userLoyaltyData = result.user;
                 
-                // Перезагружаем данные пользователя
+                // Показываем уведомление
+                const message = result.user.isNewUser 
+                    ? `Добро пожаловать!\n\n🎉 Вы зарегистрированы в системе лояльности\n💰 Начислено 100 приветственных бонусов!`
+                    : `Добро пожаловать!\n\n✅ Авторизация успешна\n💰 Ваш баланс: ${this.formatMoney(result.user.balance)}`;
+                
+                this.tg.showAlert(message);
+                
+                // Переключаемся на главный экран
                 setTimeout(() => {
-                    this.loadUserData();
-                }, 2000);
+                    this.showMainApp();
+                    this.updateUserInterface();
+                }, 1500);
             } else {
-                throw new Error(result.message || 'Ошибка регистрации');
+                throw new Error(result.message || 'Ошибка авторизации');
             }
             
         } catch (error) {
-            console.error('Registration error:', error);
-            document.getElementById('registration-form').style.display = 'block';
-            document.getElementById('registration-loading').style.display = 'none';
-            this.tg.showAlert(`Ошибка регистрации: ${error.message}`);
+            console.error('Authorization error:', error);
+            document.getElementById('phone-auth-form').style.display = 'block';
+            document.getElementById('auth-loading').style.display = 'none';
+            this.tg.showAlert(`Ошибка авторизации: ${error.message}`);
         }
+    }
+    
+    async registerUser() {
+        // Метод оставлен для совместимости, но больше не используется
+        this.tg.showAlert('Используйте авторизацию по номеру телефона');
     }
 
     showRedeemModal() {

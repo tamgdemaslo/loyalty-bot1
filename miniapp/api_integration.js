@@ -426,7 +426,7 @@ class LoyaltyAPI {
                         VALUES (?, ?)
                     `;
                     
-                    db.run(insertQuery, [agentId, deltaAmount], function(insertErr) {
+                    this.db.run(insertQuery, [agentId, deltaAmount], function(insertErr) {
                         if (insertErr) {
                             console.error('Error inserting balance record:', insertErr);
                             reject(insertErr);

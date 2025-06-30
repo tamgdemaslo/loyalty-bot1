@@ -66,11 +66,6 @@ app.post('/api/user', async (req, res) => {
     
     console.log('🔍 Received request:', { initData, directUser });
     
-    // В продакшене обязательно валидировать данные
-    // if (!validateTelegramWebAppData(initData)) {
-    //     return res.status(401).json({ error: 'Unauthorized' });
-    // }
-    
     try {
         let user = null;
         
@@ -100,30 +95,11 @@ app.post('/api/user', async (req, res) => {
             return res.status(400).json({ 
                 error: 'User ID not found',
                 message: 'Не удалось получить данные пользователя из Telegram',
-                requiresAuthorization: true,
-                debug: {
-                    hasInitData: !!initData,
-                    hasDirectUser: !!directUser,
-                    initDataLength: initData ? initData.length : 0
-                }
+                requiresPhoneAuth: true
             });
         }
         
         console.log(`🔍 Looking for user with TG ID: ${user.id}`);
-        
-        if (!user || !user.id) {
-            console.error('No user ID found in request');
-            return res.status(400).json({ 
-                error: 'User ID not found',
-                message: 'Не удалось получить данные пользователя из Telegram',
-                requiresAuthorization: true,
-                debug: {
-                    hasInitData: !!initData,
-                    hasDirectUser: !!directUser,
-                    initDataLength: initData ? initData.length : 0
-                }
-            });
-        }
         
         const loyaltyAPI = new LoyaltyAPI();
         
@@ -132,41 +108,15 @@ app.post('/api/user', async (req, res) => {
         console.log(`🔍 Agent ID found: ${agentId}`);
         
         if (!agentId) {
-            console.log(`⚠️ User ${user.id} not registered, checking if it's a known test user`);
-            
-            // Для тестирования: автоматически создаем аккаунт для известных тестовых пользователей
-            const knownTestUsers = {
-                '395925539': {
-                    agentId: '51184984-4f52-11f0-0a80-191f00608b92',
-                    phone: '+79992556031',
-                    name: 'Илья | Там где масло ⛽️'
-                },
-                395925539: {
-                    agentId: '51184984-4f52-11f0-0a80-191f00608b92',
-                    phone: '+79992556031',
-                    name: 'Илья | Там где масло ⛽️'
-                }
-            };
-            
-            console.log(`🔍 Checking known test users for: ${user.id}`);
-            console.log('Available test users:', Object.keys(knownTestUsers));
-            
-            if (knownTestUsers[user.id] || knownTestUsers[String(user.id)]) {
-                console.log(`✅ Creating test user mapping for ${user.id}`);
-                const testUser = knownTestUsers[user.id] || knownTestUsers[String(user.id)];
-                await loyaltyAPI.registerUserMapping(user.id, testUser.agentId, testUser.phone, testUser.name);
-                agentId = testUser.agentId;
-                console.log(`✅ Test user created: ${user.id} -> ${agentId}`);
-            } else {
-                console.log(`❌ User ${user.id} not registered in bot, requiring bot authorization`);
-                return res.status(404).json({ 
-                    error: 'User not registered',
-                    message: 'Пользователь не авторизован в боте',
-                    requiresBotAuth: true,
-                    telegramId: user.id,
-                    username: user.username || null
-                });
-            }
+            console.log(`⚠️ User ${user.id} not registered, requiring phone authorization`);
+            return res.status(404).json({ 
+                error: 'User not registered',
+                message: 'Для доступа к приложению необходима авторизация по номеру телефона',
+                requiresPhoneAuth: true,
+                telegramId: user.id,
+                username: user.username || null,
+                firstName: user.first_name || null
+            });
         }
         
         // Получаем все данные пользователя
@@ -396,6 +346,121 @@ app.post('/api/redeem', async (req, res) => {
     } catch (error) {
         console.error('Error redeeming bonuses:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Авторизация по номеру телефона
+app.post('/api/auth-phone', async (req, res) => {
+    const { initData, phone, user: directUser } = req.body;
+    
+    console.log('📞 Phone authorization request:', { phone, directUser });
+    
+    try {
+        let user = null;
+        
+        // Получаем данные пользователя из Telegram
+        if (directUser && directUser.id) {
+            user = directUser;
+            console.log('✅ Using direct user data for phone auth:', user);
+        } else if (initData) {
+            const urlParams = new URLSearchParams(initData);
+            const userParam = urlParams.get('user');
+            
+            if (userParam) {
+                try {
+                    user = JSON.parse(decodeURIComponent(userParam));
+                    console.log('✅ Parsed user from initData for phone auth:', user);
+                } catch (error) {
+                    console.error('❌ Error parsing user data from initData:', error);
+                }
+            }
+        }
+        
+        if (!user || !user.id) {
+            return res.status(400).json({ 
+                error: 'User ID not found',
+                message: 'Не удалось получить данные пользователя из Telegram'
+            });
+        }
+        
+        if (!phone) {
+            return res.status(400).json({ 
+                error: 'Phone required',
+                message: 'Номер телефона обязателен для авторизации'
+            });
+        }
+        
+        const loyaltyAPI = new LoyaltyAPI();
+        
+        // Ищем пользователя в МойСклад по номеру телефона
+        console.log(`🔍 Searching for agent with phone: ${phone}`);
+        let agentId = await loyaltyAPI.findAgentByPhone(phone);
+        
+        if (!agentId) {
+            // Создаем нового контрагента в МойСклад
+            console.log(`👤 Creating new agent for phone: ${phone}`);
+            const fullName = user.first_name + (user.last_name ? ` ${user.last_name}` : '');
+            agentId = await loyaltyAPI.createNewAgent(fullName, phone);
+            
+            if (!agentId) {
+                return res.status(500).json({
+                    error: 'Failed to create agent',
+                    message: 'Не удалось создать клиента в системе'
+                });
+            }
+        }
+        
+        console.log(`✅ Agent found/created: ${agentId}`);
+        
+        // Создаем связь между Telegram ID и Agent ID
+        await loyaltyAPI.registerUserMapping(
+            user.id, 
+            agentId, 
+            phone, 
+            user.first_name + (user.last_name ? ` ${user.last_name}` : '')
+        );
+        
+        // Получаем данные пользователя для ответа
+        const [balance, loyaltyLevel, contact, statistics] = await Promise.all([
+            loyaltyAPI.getBalance(agentId),
+            loyaltyAPI.getLoyaltyLevel(agentId),
+            loyaltyAPI.getUserContact(user.id),
+            loyaltyAPI.getClientStatistics(agentId)
+        ]);
+        
+        // Форматируем уровни лояльности
+        const levelNames = ['', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+        const levelName = levelNames[loyaltyLevel.level_id] || 'Bronze';
+        
+        const userData = {
+            id: user.id,
+            name: contact.fullname || user.first_name || 'Пользователь',
+            phone: contact.phone || phone,
+            balance: Math.round(balance / 100),
+            level: levelName,
+            levelId: loyaltyLevel.level_id,
+            totalSpent: Math.round(loyaltyLevel.total_spent / 100),
+            totalEarned: Math.round(loyaltyLevel.total_earned / 100),
+            totalRedeemed: Math.round(loyaltyLevel.total_redeemed / 100),
+            totalVisits: statistics.totalVisits,
+            thisYearVisits: statistics.thisYearVisits,
+            averageCheck: Math.round(statistics.averageCheck / 100),
+            registeredDate: new Date().toISOString().split('T')[0],
+            isNewUser: !agentId // Если агент был создан только что
+        };
+        
+        res.json({
+            success: true,
+            message: agentId ? 'Авторизация успешна' : 'Пользователь зарегистрирован',
+            user: userData
+        });
+        
+    } catch (error) {
+        console.error('❌ Error during phone authorization:', error);
+        res.status(500).json({ 
+            error: 'Authorization failed',
+            message: 'Ошибка при авторизации. Попробуйте еще раз.'
+        });
     }
 });
 
