@@ -62,17 +62,88 @@ app.get('/', (req, res) => {
 
 // Получение данных пользователя
 app.post('/api/user', async (req, res) => {
-    // Убираем проверку TG ID - сразу требуем авторизацию по телефону
-    console.log('🔍 Received user request - redirecting to phone auth');
-    
-    return res.status(404).json({ 
-        error: 'Phone authorization required',
-        message: 'Для доступа к приложению необходима авторизация по номеру телефона',
-        requiresPhoneAuth: true,
-        telegramId: null,
-        username: null,
-        firstName: 'пользователь'
-    });
+    const { initData, user: directUser } = req.body;
+    console.log('--- Received /api/user request ---');
+
+    try {
+        let user = null;
+
+        // Extract user data from initData or directUser
+        if (directUser && directUser.id) {
+            user = directUser;
+        } else if (initData) {
+            const urlParams = new URLSearchParams(initData);
+            const userParam = urlParams.get('user');
+            if (userParam) {
+                try {
+                    user = JSON.parse(decodeURIComponent(userParam));
+                } catch (e) {
+                     console.error('Failed to parse user data from initData', e);
+                }
+            }
+        }
+
+        // If no user data, force phone auth
+        if (!user || !user.id) {
+            console.log('User ID not found in initData, requires phone auth.');
+            return res.status(404).json({
+                error: 'Phone authorization required',
+                requiresPhoneAuth: true,
+                firstName: 'пользователь'
+            });
+        }
+        
+        console.log(`User found in initData: ${user.id} (${user.first_name})`);
+
+        // Check if user is mapped in our DB
+        const agentId = await loyaltyAPI.getAgentId(user.id);
+
+        if (!agentId) {
+            // User is in Telegram, but not mapped in our DB yet.
+            console.log(`User ${user.id} not found in DB, requires phone auth.`);
+            return res.status(404).json({
+                error: 'User not registered, phone authorization required',
+                requiresPhoneAuth: true,
+                firstName: user.first_name || 'пользователь'
+            });
+        }
+
+        // User is registered! Fetch all data and return it.
+        console.log(`User ${user.id} is mapped to agent ${agentId}. Fetching full data...`);
+        const [balance, loyaltyLevel, contact, statistics] = await Promise.all([
+            loyaltyAPI.getBalance(agentId),
+            loyaltyAPI.getLoyaltyLevel(agentId),
+            loyaltyAPI.getUserContact(user.id),
+            loyaltyAPI.getClientStatistics(agentId)
+        ]);
+
+        const levelNames = ['', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+        const levelName = levelNames[loyaltyLevel.level_id] || 'Bronze';
+
+        const userData = {
+            id: user.id,
+            name: contact.fullname || user.first_name || 'Пользователь',
+            phone: contact.phone,
+            balance: Math.round(balance / 100),
+            level: levelName,
+            levelId: loyaltyLevel.level_id,
+            totalSpent: Math.round(loyaltyLevel.total_spent / 100),
+            totalEarned: Math.round(loyaltyLevel.total_earned / 100),
+            totalRedeemed: Math.round(loyaltyLevel.total_redeemed / 100),
+            totalVisits: statistics.totalVisits,
+            thisYearVisits: statistics.thisYearVisits,
+            averageCheck: Math.round(statistics.averageCheck / 100),
+            registeredDate: new Date().toISOString().split('T')[0], // Placeholder
+            isNewUser: false
+        };
+
+        console.log('Successfully fetched user data. Returning 200 OK.');
+        res.json(userData);
+
+    } catch (error) {
+        console.error('Error in /api/user:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Получение истории посещений
