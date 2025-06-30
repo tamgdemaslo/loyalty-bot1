@@ -5,7 +5,7 @@
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from .db import conn, get_agent_id, get_bonus_transactions
+from .db_postgres import conn, get_agent_id, get_bonus_transactions
 from .moysklad import fetch_shipments, fetch_demand_full
 from .formatting import fmt_money, fmt_date_local
 from .loyalty import get_level_info, LOYALTY_LEVELS

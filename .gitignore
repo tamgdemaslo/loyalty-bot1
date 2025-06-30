@@ -1,0 +1,45 @@
+# Файлы с конфиденциальными данными
+.env
+.env.*
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Зависимости
+node_modules/
+jspm_packages/
+
+# SQLite DB
+*.db
+*.sqlite3
+
+# Папки для разработки
+.idea/
+.vscode/

@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timezone
 from aiogram import Bot
 from .config import BOT_TOKEN, BONUS_RATE, MS_BASE, MSK
-from .db import change_balance, conn, get_tg_id_by_agent, get_loyalty_level, update_total_spent, add_bonus_transaction
+from .db_postgres import change_balance, conn, get_tg_id_by_agent, get_loyalty_level, update_total_spent, add_bonus_transaction
 from .formatting import fmt_money
 from .moysklad import fetch_demands, fetch_demand_full
 from .loyalty import get_bonus_rate, get_level_up_message

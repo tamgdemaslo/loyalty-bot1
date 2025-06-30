@@ -6,7 +6,7 @@
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from .db import conn
+from .db_postgres import conn
 from .formatting import fmt_date_local
 
 # Справочник регламентных работ ТО
@@ -86,46 +86,63 @@ MOYSKLAD_SERVICE_MAPPING = {
 
 def init_maintenance_tables():
     """Инициализация таблиц для модуля ТО"""
-    conn.executescript("""
-    -- Таблица истории выполненных работ ТО
-    CREATE TABLE IF NOT EXISTS maintenance_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        agent_id TEXT NOT NULL,
-        work_id INTEGER NOT NULL,
-        performed_date DATE NOT NULL,
-        mileage INTEGER NOT NULL,
-        source TEXT NOT NULL, -- 'auto' (из МойСклад) или 'manual' (ручной ввод)
-        demand_id TEXT, -- ID отгрузки из МойСклад (если source='auto')
-        notes TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (agent_id) REFERENCES bonuses(agent_id)
-    );
-
-    -- Таблица настроек ТО для клиентов (персональные интервалы)
-    CREATE TABLE IF NOT EXISTS maintenance_settings (
-        agent_id TEXT NOT NULL,
-        work_id INTEGER NOT NULL,
-        custom_mileage_interval INTEGER,
-        custom_time_interval INTEGER,
-        is_active BOOLEAN DEFAULT 1,
-        PRIMARY KEY (agent_id, work_id),
-        FOREIGN KEY (agent_id) REFERENCES bonuses(agent_id)
-    );
-
-    -- Таблица соответствия услуг МойСклад и работ ТО
-    CREATE TABLE IF NOT EXISTS maintenance_service_mapping (
-        moysklad_service_name TEXT PRIMARY KEY,
-        work_id INTEGER NOT NULL,
-        is_active BOOLEAN DEFAULT 1
-    );
-
-    -- Индексы для быстрого поиска
-    CREATE INDEX IF NOT EXISTS idx_maintenance_history_agent_work 
-        ON maintenance_history(agent_id, work_id);
-    CREATE INDEX IF NOT EXISTS idx_maintenance_history_date 
-        ON maintenance_history(performed_date);
-    """)
-    conn.commit()
+    try:
+        cursor = conn.cursor()
+        
+        # Таблица истории выполненных работ ТО
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS maintenance_history (
+            id SERIAL PRIMARY KEY,
+            agent_id TEXT NOT NULL,
+            work_id INTEGER NOT NULL,
+            performed_date DATE NOT NULL,
+            mileage INTEGER NOT NULL,
+            source TEXT NOT NULL, -- 'auto' (из МойСклад) или 'manual' (ручной ввод)
+            demand_id TEXT, -- ID отгрузки из МойСклад (если source='auto')
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (agent_id) REFERENCES bonuses(agent_id)
+        )
+        """)
+        
+        # Таблица настроек ТО для клиентов (персональные интервалы)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS maintenance_settings (
+            agent_id TEXT NOT NULL,
+            work_id INTEGER NOT NULL,
+            custom_mileage_interval INTEGER,
+            custom_time_interval INTEGER,
+            is_active BOOLEAN DEFAULT TRUE,
+            PRIMARY KEY (agent_id, work_id),
+            FOREIGN KEY (agent_id) REFERENCES bonuses(agent_id)
+        )
+        """)
+        
+        # Таблица соответствия услуг МойСклад и работ ТО
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS maintenance_service_mapping (
+            moysklad_service_name TEXT PRIMARY KEY,
+            work_id INTEGER NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE
+        )
+        """)
+        
+        # Индексы для быстрого поиска
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_maintenance_history_agent_work 
+            ON maintenance_history(agent_id, work_id)
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_maintenance_history_date 
+            ON maintenance_history(performed_date)
+        """)
+        
+        conn.commit()
+        cursor.close()
+    except Exception as e:
+        print(f"Ошибка при инициализации таблиц ТО: {e}")
+        conn.rollback()
 
 
 def get_work_info(work_id: int) -> Dict:
@@ -139,10 +156,12 @@ def get_work_intervals(agent_id: str, work_id: int) -> Tuple[int, int]:
     Учитывает персональные настройки клиента
     """
     # Проверяем персональные настройки
-    custom_settings = conn.execute(
-        "SELECT custom_mileage_interval, custom_time_interval FROM maintenance_settings WHERE agent_id = ? AND work_id = ?",
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT custom_mileage_interval, custom_time_interval FROM maintenance_settings WHERE agent_id = %s AND work_id = %s",
         (agent_id, work_id)
-    ).fetchone()
+    )
+    custom_settings = cursor.fetchone()
     
     if custom_settings and (custom_settings[0] or custom_settings[1]):
         mileage_interval = custom_settings[0] or MAINTENANCE_WORKS[work_id]["mileage_interval"]
@@ -156,13 +175,15 @@ def get_work_intervals(agent_id: str, work_id: int) -> Tuple[int, int]:
 
 def get_last_maintenance(agent_id: str, work_id: int) -> Optional[Dict]:
     """Получает информацию о последнем выполнении работы ТО"""
-    row = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT performed_date, mileage, source, notes, created_at
         FROM maintenance_history 
-        WHERE agent_id = ? AND work_id = ?
+        WHERE agent_id = %s AND work_id = %s
         ORDER BY performed_date DESC, created_at DESC
         LIMIT 1
-    """, (agent_id, work_id)).fetchone()
+    """, (agent_id, work_id))
+    row = cursor.fetchone()
     
     if not row:
         return None
@@ -329,9 +350,10 @@ def add_manual_maintenance(agent_id: str, work_id: int, date: str, mileage: int,
             return False
         
         # Добавляем запись
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO maintenance_history (agent_id, work_id, performed_date, mileage, source, notes)
-            VALUES (?, ?, ?, ?, 'manual', ?)
+            VALUES (%s, %s, %s, %s, 'manual', %s)
         """, (agent_id, work_id, date, mileage, notes))
         conn.commit()
         
@@ -344,17 +366,19 @@ def add_auto_maintenance(agent_id: str, work_id: int, demand_id: str, date: str,
     """Добавляет автоматическую запись о выполненной работе ТО (из МойСклад)"""
     try:
         # Проверяем, не добавлена ли уже запись для этой отгрузки
-        existing = conn.execute(
-            "SELECT 1 FROM maintenance_history WHERE demand_id = ? AND work_id = ?",
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT 1 FROM maintenance_history WHERE demand_id = %s AND work_id = %s",
             (demand_id, work_id)
-        ).fetchone()
+        )
+        existing = cursor.fetchone()
         
         if existing:
             return False  # Уже добавлено
         
-        conn.execute("""
+        cursor.execute("""
             INSERT INTO maintenance_history (agent_id, work_id, performed_date, mileage, source, demand_id)
-            VALUES (?, ?, ?, ?, 'auto', ?)
+            VALUES (%s, %s, %s, %s, 'auto', %s)
         """, (agent_id, work_id, date, mileage, demand_id))
         conn.commit()
         
@@ -369,10 +393,12 @@ def process_moysklad_services(agent_id: str, demand_id: str, services: List[Dict
         service_name = service.get("assortment", {}).get("name", "")
         
         # Ищем соответствие в настройках
-        mapping = conn.execute(
-            "SELECT work_id FROM maintenance_service_mapping WHERE moysklad_service_name = ? AND is_active = 1",
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT work_id FROM maintenance_service_mapping WHERE moysklad_service_name = %s AND is_active = TRUE",
             (service_name,)
-        ).fetchone()
+        )
+        mapping = cursor.fetchone()
         
         if mapping:
             work_id = mapping[0]

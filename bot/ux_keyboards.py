@@ -7,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram import types
 from .formatting import fmt_date_local, fmt_money
 from .loyalty import get_level_info, calculate_level_by_spent, get_redeem_cap
-from .db import get_balance, get_agent_id
+from .db_postgres import get_balance, get_agent_id
 from .config import MINIAPP_URL
 from datetime import datetime
 import random
