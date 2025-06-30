@@ -1,4 +1,37 @@
 /**
+ * Получает статистику клиента
+ * @param {string} agentId - ID агента
+ * @returns {Promise<object>} - Статистика клиента
+ */
+async function getClientStatistics(agentId) {
+  try {
+    const result = await pool.query(`
+      SELECT COUNT(*) AS total_visits, COALESCE(SUM(amount), 0) AS total_spent
+      FROM bonus_transactions
+      WHERE agent_id = $1
+    `, [agentId]);
+
+    const totalVisits = parseInt(result.rows[0].total_visits);
+    const totalSpent = parseInt(result.rows[0].total_spent);
+
+    return {
+      totalVisits,
+      totalSpent,
+      thisYearVisits: totalVisits, // Placeholder для текущего года
+      averageCheck: totalVisits > 0 ? totalSpent / totalVisits : 0
+    };
+  } catch (error) {
+    logger.error(`[getClientStatistics] Ошибка получения статистики клиента: ${error.message}`);
+    return {
+      totalVisits: 0,
+      totalSpent: 0,
+      thisYearVisits: 0,
+      averageCheck: 0
+    };
+  }
+}
+
+/**
  * Модуль для работы с базой данных PostgreSQL в веб-приложении.
  * Заменяет функциональность исходного api_integration.js.
  */
@@ -461,6 +494,7 @@ module.exports = {
   getLoyaltyLevel,
   getUserContact,
   getBonusTransactions,
+  getClientStatistics,
   addBonusTransaction,
   getMaintenanceHistory,
   addMaintenanceRecord,
