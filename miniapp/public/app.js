@@ -48,19 +48,10 @@ class LoyaltyApp {
     }
 
     async loadUserData() {
+        // Проверяем, есть ли авторизация, но по сути сразу показываем форму телефона
         try {
-            console.log('Loading user data...');
-            console.log('Telegram initData:', this.tg.initData);
-            console.log('Telegram initDataUnsafe:', this.tg.initDataUnsafe);
+            console.log('Checking authorization status...');
             
-            // Проверяем, есть ли пользователь в Telegram
-            if (!this.userData || !this.userData.id) {
-                console.log('No Telegram user data, showing authorization prompt');
-                this.showAuthorizationPrompt();
-                return;
-            }
-            
-            // Получаем данные пользователя с сервера
             const response = await fetch('/api/user', {
                 method: 'POST',
                 headers: {
@@ -74,44 +65,26 @@ class LoyaltyApp {
             
             if (!response.ok) {
                 const errorData = await response.json().catch(() => null);
-                console.error('API Error:', errorData);
+                console.log('Server requires phone auth:', errorData);
                 
-                // Если пользователь не зарегистрирован (404), показываем форму авторизации по телефону
-                if (response.status === 404 && errorData?.requiresPhoneAuth) {
-                    this.showPhoneAuthForm(errorData);
-                    return;
-                }
-                
-                throw new Error(`HTTP error! status: ${response.status}`);
+                // Показываем форму авторизации по телефону
+                this.showPhoneAuthForm({
+                    firstName: errorData?.firstName || this.userData?.first_name || 'пользователь'
+                });
+                return;
             }
             
+            // Если пользователь уже авторизован (маловероятно)
             this.userLoyaltyData = await response.json();
             this.updateUserInterface();
             
         } catch (error) {
             console.error('Error loading user data:', error);
             
-            // Для разработки: используем демо данные если есть Telegram user
-            if (this.userData && this.userData.id) {
-                console.log('Using demo data as fallback for testing');
-                this.userLoyaltyData = {
-                    id: this.userData.id,
-                    name: this.userData.first_name || 'Demo User',
-                    phone: '+7 123 456-78-90',
-                    balance: 2450,
-                    level: 'Silver',
-                    totalSpent: 75000,
-                    totalEarned: 5420,
-                    totalRedeemed: 2970,
-                    totalVisits: 12,
-                    registeredDate: '2023-05-15'
-                };
-                
-                this.updateUserInterface();
-                this.showError('Не удалось загрузить данные с сервера. Используются демо-данные.');
-            } else {
-                this.showAuthorizationPrompt();
-            }
+            // При любой ошибке показываем форму авторизации
+            this.showPhoneAuthForm({
+                firstName: this.userData?.first_name || 'пользователь'
+            });
         }
     }
 

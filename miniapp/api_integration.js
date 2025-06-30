@@ -64,15 +64,15 @@ try {
     
     console.log('✅ Базовые таблицы созданы/проверены');
     
-    // Вставляем тестового пользователя для демо
-    const insertUser = db.prepare(`INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) VALUES (?, ?, ?, ?)`);
-    insertUser.run(12345, 'demo_agent_id', '+7123456789', 'Demo User');
+    // Тестовый пользователь отключен для демонстрации авторизации
+    // const insertUser = db.prepare(`INSERT OR IGNORE INTO user_map (tg_id, agent_id, phone, fullname) VALUES (?, ?, ?, ?)`);
+    // insertUser.run(12345, 'demo_agent_id', '+7123456789', 'Demo User');
     
-    const insertBalance = db.prepare(`INSERT OR IGNORE INTO bonuses (agent_id, balance) VALUES (?, ?)`);
-    insertBalance.run('demo_agent_id', 245000); // 2450 рублей в копейках
+    // const insertBalance = db.prepare(`INSERT OR IGNORE INTO bonuses (agent_id, balance) VALUES (?, ?, ?)`);
+    // insertBalance.run('demo_agent_id', 245000); // 2450 рублей в копейках
     
-    const insertLoyalty = db.prepare(`INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent, total_earned, total_redeemed) VALUES (?, ?, ?, ?, ?)`);
-    insertLoyalty.run('demo_agent_id', 2, 7500000, 542000, 297000); // Все в копейках
+    // const insertLoyalty = db.prepare(`INSERT OR IGNORE INTO loyalty_levels (agent_id, level_id, total_spent, total_earned, total_redeemed) VALUES (?, ?, ?, ?, ?)`);
+    // insertLoyalty.run('demo_agent_id', 2, 7500000, 542000, 297000); // Все в копейках
     
     console.log('✅ Тестовые данные добавлены');
 } catch (error) {
