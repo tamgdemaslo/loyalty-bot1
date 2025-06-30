@@ -21,8 +21,7 @@ RUN npm cache clean --force \
 # Copy app source
 COPY miniapp/ .
 
-# Copy main project files (if needed by api_integration.js)
-COPY loyalty.db ./
+# Copy main project files
 COPY ux_copy_texts.py ../
 COPY ux_copy_texts_minimal.py ../
 
