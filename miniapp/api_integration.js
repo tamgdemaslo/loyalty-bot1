@@ -87,12 +87,21 @@ class LoyaltyAPI {
     // Получить ID агента по Telegram ID
     async getAgentId(telegramId) {
         return new Promise((resolve, reject) => {
-            this.db.get("SELECT agent_id FROM user_map WHERE tg_id = ?", [telegramId], (err, row) => {
+            console.log(`🔍 Looking for agent with TG ID: ${telegramId} (type: ${typeof telegramId})`);
+            
+            this.db.get("SELECT agent_id, tg_id, phone, fullname FROM user_map WHERE tg_id = ?", [telegramId], (err, row) => {
                 if (err) {
-                    console.error('Error getting agent ID:', err);
+                    console.error('❌ Error getting agent ID:', err);
                     reject(err);
                 } else {
-                    resolve(row ? row.agent_id : null);
+                    console.log(`📝 Database query result:`, row);
+                    if (row) {
+                        console.log(`✅ Found agent: ${row.agent_id} for TG ID: ${row.tg_id}`);
+                        resolve(row.agent_id);
+                    } else {
+                        console.log(`❌ No agent found for TG ID: ${telegramId}`);
+                        resolve(null);
+                    }
                 }
             });
         });

@@ -64,7 +64,7 @@ app.get('/', (req, res) => {
 app.post('/api/user', async (req, res) => {
     const { initData, user: directUser } = req.body;
     
-    console.log('Received request:', { initData, directUser });
+    console.log('🔍 Received request:', { initData, directUser });
     
     // В продакшене обязательно валидировать данные
     // if (!validateTelegramWebAppData(initData)) {
@@ -77,21 +77,39 @@ app.post('/api/user', async (req, res) => {
         // Пробуем получить пользователя из прямых данных (новый формат)
         if (directUser && directUser.id) {
             user = directUser;
-            console.log('Using direct user data:', user);
+            console.log('✅ Using direct user data:', user);
         } else if (initData) {
             // Парсим данные пользователя из initData (старый формат)
             const urlParams = new URLSearchParams(initData);
             const userParam = urlParams.get('user');
             
+            console.log('📝 Raw user param from initData:', userParam);
+            
             if (userParam) {
                 try {
                     user = JSON.parse(decodeURIComponent(userParam));
-                    console.log('Parsed user from initData:', user);
+                    console.log('✅ Parsed user from initData:', user);
                 } catch (error) {
-                    console.error('Error parsing user data from initData:', error);
+                    console.error('❌ Error parsing user data from initData:', error);
                 }
             }
         }
+        
+        if (!user || !user.id) {
+            console.error('❌ No user ID found in request');
+            return res.status(400).json({ 
+                error: 'User ID not found',
+                message: 'Не удалось получить данные пользователя из Telegram',
+                requiresAuthorization: true,
+                debug: {
+                    hasInitData: !!initData,
+                    hasDirectUser: !!directUser,
+                    initDataLength: initData ? initData.length : 0
+                }
+            });
+        }
+        
+        console.log(`🔍 Looking for user with TG ID: ${user.id}`);
         
         if (!user || !user.id) {
             console.error('No user ID found in request');
@@ -111,8 +129,10 @@ app.post('/api/user', async (req, res) => {
         
         // Получаем ID агента по Telegram ID
         let agentId = await loyaltyAPI.getAgentId(user.id);
+        console.log(`🔍 Agent ID found: ${agentId}`);
+        
         if (!agentId) {
-            console.log(`User ${user.id} not registered, checking if it's a known test user`);
+            console.log(`⚠️ User ${user.id} not registered, checking if it's a known test user`);
             
             // Для тестирования: автоматически создаем аккаунт для известных тестовых пользователей
             const knownTestUsers = {
@@ -120,17 +140,25 @@ app.post('/api/user', async (req, res) => {
                     agentId: '51184984-4f52-11f0-0a80-191f00608b92',
                     phone: '+79992556031',
                     name: 'Илья | Там где масло ⛽️'
+                },
+                395925539: {
+                    agentId: '51184984-4f52-11f0-0a80-191f00608b92',
+                    phone: '+79992556031',
+                    name: 'Илья | Там где масло ⛽️'
                 }
             };
             
-            if (knownTestUsers[user.id]) {
-                console.log(`Creating test user mapping for ${user.id}`);
-                const testUser = knownTestUsers[user.id];
+            console.log(`🔍 Checking known test users for: ${user.id}`);
+            console.log('Available test users:', Object.keys(knownTestUsers));
+            
+            if (knownTestUsers[user.id] || knownTestUsers[String(user.id)]) {
+                console.log(`✅ Creating test user mapping for ${user.id}`);
+                const testUser = knownTestUsers[user.id] || knownTestUsers[String(user.id)];
                 await loyaltyAPI.registerUserMapping(user.id, testUser.agentId, testUser.phone, testUser.name);
                 agentId = testUser.agentId;
                 console.log(`✅ Test user created: ${user.id} -> ${agentId}`);
             } else {
-                console.log(`User ${user.id} not registered in bot, requiring bot authorization`);
+                console.log(`❌ User ${user.id} not registered in bot, requiring bot authorization`);
                 return res.status(404).json({ 
                     error: 'User not registered',
                     message: 'Пользователь не авторизован в боте',
