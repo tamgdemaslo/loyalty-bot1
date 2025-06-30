@@ -1,0 +1,1106 @@
+Структура моего проекта: 
+
+├── bot
+│   ├── __pycache__
+│   │   ├── accrual.cpython-312.pyc
+│   │   ├── config.cpython-312.pyc
+│   │   ├── db.cpython-312.pyc
+│   │   ├── formatting.cpython-312.pyc
+│   │   ├── handlers.cpython-312.pyc
+│   │   ├── keyboards.cpython-312.pyc
+│   │   ├── main.cpython-312.pyc
+│   │   ├── moysklad.cpython-312.pyc
+│   │   └── yclients.cpython-312.pyc
+│   ├── accrual.py
+│   ├── config.py
+│   ├── db.py
+│   ├── formatting.py
+│   ├── handlers.py
+│   ├── keyboards.py
+│   ├── main.py
+│   ├── moysklad.py
+│   └── yclients.py
+├── loyalty.db
+├── requirements.txt
+└── token.env
+
+/accrual.py
+
+import logging
+import asyncio
+from datetime import datetime, timezone
+from aiogram import Bot
+from .config import BOT_TOKEN, BONUS_RATE, MS_BASE, MSK
+from .db import change_balance, conn, get_tg_id_by_agent
+from .formatting import fmt_money
+from .moysklad import fetch_demands, fetch_demand_full
+from dateutil import parser as dateparser, relativedelta
+
+log = logging.getLogger(__name__)
+
+def doc_age_seconds(iso: str) -> float:
+    ts = dateparser.isoparse(iso).replace(tzinfo=MSK)
+    return (datetime.now(MSK) - ts).total_seconds()
+
+async def notify_user_about_demand(demand: dict, bonus_amount: int):
+    """Отправляет уведомление пользователю о готовой машине и бонусах"""
+    try:
+        # Получаем agent_id из demand
+        agent_id = demand["agent"]["meta"]["href"].split("/")[-1]
+        # Получаем tg_id пользователя
+        tg_id = get_tg_id_by_agent(agent_id)
+        
+        if tg_id:
+            bot = Bot(token=BOT_TOKEN)
+            try:
+                message = (
+                    "🚗 <b>Ваша машина готова!</b>\n\n"
+                    f"💰 Сумма к оплате: <b>{fmt_money(demand['sum'])}</b>\n"
+                    f"✨ Будет начислено бонусов: <b>{fmt_money(bonus_amount)}</b>"
+                )
+                await bot.send_message(
+                    chat_id=tg_id,
+                    text=message,
+                    parse_mode="HTML"
+                )
+                log.info(f"Notification sent to user {tg_id}")
+            except Exception as e:
+                log.error(f"Failed to send notification: {e}")
+            finally:
+                await bot.session.close()
+    except Exception as e:
+        log.error(f"Error in notify_user_about_demand: {e}")
+
+async def accrue_for_demand(demand: dict) -> int:
+    aid = demand["agent"]["meta"]["href"].split("/")[-1]
+    total = 0
+    for p in demand["positions"]["rows"]:
+        if p["assortment"]["meta"]["type"] == "service":
+            continue
+        total += int(p["price"] / 100 * p["quantity"] * BONUS_RATE * 100)
+    if total:
+        change_balance(aid, total)
+        log.info("Accrued %s → %s", fmt_money(total), aid)
+        # Отправляем уведомление пользователю
+        await notify_user_about_demand(demand, total)
+    return total
+
+async def accrual_loop():
+    """Основной цикл начисления бонусов"""
+    log.info("Accrual loop started...")
+    while True:
+        try:
+            # Получаем последние отгрузки
+            demands = fetch_demands(limit=10)
+            for demand in demands:
+                # Проверяем, обработана ли уже эта отгрузка
+                already = conn.execute(
+                    "SELECT 1 FROM accrual_log WHERE demand_id=?",
+                    (demand["id"],)
+                ).fetchone()
+                
+                if not already:
+                    # Если отгрузка новая - начисляем бонусы и отправляем уведомление
+                    bonus_amount = await accrue_for_demand(demand)
+                    if bonus_amount > 0:
+                        await notify_user_about_demand(demand, bonus_amount)
+                        conn.execute(
+                            "INSERT INTO accrual_log(demand_id) VALUES(?)",
+                            (demand["id"],)
+                        )
+                        conn.commit()
+        
+        except Exception as e:
+            log.error(f"Error in accrual loop: {e}")
+        
+        # Ждем 5 минут перед следующей проверкой
+        await asyncio.sleep(30)
+
+
+Config 
+
+import os
+from dateutil.tz import gettz
+from dotenv import load_dotenv
+load_dotenv()
+
+YCLIENTS_PARTNER_ID   = 9354
+YCLIENTS_PARTNER_TOKEN = os.getenv("YCLIENTS_PARTNER_TOKEN", "mz5bf2yp97nbs4s45e9j")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7914899311:AAGY4CjuMqZX3w1eS7zCM2yNMW3312xCwPE")
+MS_TOKEN  = os.getenv("MS_TOKEN",  "ecfb2a801095bded8b05cabbb597bbce3dc59e73")
+
+if not (BOT_TOKEN and MS_TOKEN):
+    raise RuntimeError("Укажите BOT_TOKEN и MS_TOKEN — в .env или переменных окружения!")
+
+# MoySklad
+MS_BASE = "https://api.moysklad.ru/api/remap/1.2/entity"
+HEADERS = {"Authorization": f"Bearer {MS_TOKEN}", "Accept": "application/json;charset=utf-8"}
+
+# Логика бонусов
+BONUS_RATE = 0.05        # 5 %
+REDEEM_CAP = 0.30        # можно списать ≤ 30 %
+MSK        = gettz("Europe/Moscow")          # базовый TZ
+USER_TZ    = gettz("Europe/Kaliningrad")     # для вывода дат
+
+# UI
+E_TRUCK, E_PHONE, E_SPARKLE, E_CAL, E_MONEY = "🚚", "📞", "✨", "📅", "💰"
+E_WRENCH = "🔧"
+ODOMETER_ATTR_ID = "58075519-b48a-11ee-0a80-052a0018b89c"
+
+DB
+
+import sqlite3
+from typing import Optional
+
+conn = sqlite3.connect("loyalty.db")
+conn.execute("PRAGMA foreign_keys=ON")
+
+# ── гарантируем, что все нужные колонки и таблицы есть ───────────────
+conn.executescript("""
+CREATE TABLE IF NOT EXISTS user_map (
+    tg_id    INTEGER PRIMARY KEY,
+    agent_id TEXT    NOT NULL,
+    phone    TEXT    DEFAULT '',
+    fullname TEXT    DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS bonuses (
+    agent_id TEXT PRIMARY KEY,
+    balance  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS accrual_log (
+    demand_id    TEXT PRIMARY KEY,
+    processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+""")
+conn.commit()
+# ─────────────────────────────────────────────────────────────────────
+
+# ── helpers ──────────────────────────────────────────────────────────
+def get_agent_id(tg_id: int) -> Optional[str]:
+    row = conn.execute("SELECT agent_id FROM user_map WHERE tg_id=?", (tg_id,)).fetchone()
+    return row[0] if row else None
+
+
+def register_mapping(tg_id: int, agent_id: str, phone: str, fullname: str):
+    conn.execute(
+        """
+        INSERT INTO user_map(tg_id, agent_id, phone, fullname)
+        VALUES (?,?,?,?)
+        ON CONFLICT(tg_id) DO UPDATE
+           SET agent_id = excluded.agent_id,
+               phone    = excluded.phone,
+               fullname = excluded.fullname
+        """,
+        (tg_id, agent_id, phone, fullname),
+    )
+    # Начисление приветственных бонусов, если пользователь новый
+    conn.execute(
+        """
+        INSERT INTO bonuses(agent_id, balance) VALUES(?,?)
+        ON CONFLICT(agent_id) DO NOTHING
+        """,
+        (agent_id, 10000),  # 100 бонусов для нового пользователя
+    )
+    conn.commit()
+
+
+def user_contact(tg_id: int) -> tuple[str, str]:
+    row = conn.execute("SELECT phone, fullname FROM user_map WHERE tg_id=?", (tg_id,)).fetchone()
+    return row if row else ("", "")
+
+
+def get_balance(agent_id: str) -> int:
+    row = conn.execute("SELECT balance FROM bonuses WHERE agent_id=?", (agent_id,)).fetchone()
+    return row[0] if row else 0
+
+
+def change_balance(agent_id: str, delta: int):
+    conn.execute(
+        """
+        INSERT INTO bonuses(agent_id, balance) VALUES(?,?)
+        ON CONFLICT(agent_id) DO UPDATE SET balance = balance + ?
+        """,
+        (agent_id, delta, delta),
+    )
+    conn.commit()
+
+
+def get_tg_id_by_agent(agent_id: str) -> int | None:
+    """Получает Telegram ID пользователя по его agent_id"""
+    row = conn.execute(
+        "SELECT tg_id FROM user_map WHERE agent_id=?", 
+        (agent_id,)
+    ).fetchone()
+    return row[0] if row else None
+
+/formatting.py
+
+from dateutil import parser as dateparser
+from .config import MSK, USER_TZ
+
+# ─────────────────────────── даты/деньги ────────────────────────────
+def fmt_date_local(iso: str) -> str:
+    """Преобразует момент из МойСклада (naive-MSK) в локальное USER_TZ."""
+    ts = dateparser.isoparse(iso).replace(tzinfo=MSK)
+    return ts.astimezone(USER_TZ).strftime("%d.%m.%Y %H:%M")
+
+def fmt_money(kop: int) -> str:
+    rub = kop / 100
+    return f"{rub:,.2f} ₽".rstrip("0").rstrip(",")
+
+# ─────────────────────────── позиции ────────────────────────────────
+def render_positions(rows: list) -> str:
+    """
+    Получает d['positions']['rows'] из документа demand и
+    возвращает красивый HTML-список вида:
+        • Товар — 2 × 450 ₽ = 900 ₽
+    """
+    lines: list[str] = []
+    for p in rows:
+        art  = p["assortment"]
+        name = art.get("name", "—")
+        qty  = p.get("quantity", 1)
+        price_kop = p.get("price", 0)
+        total_kop = int(price_kop * qty)
+        lines.append(
+            f"• <b>{name}</b> — {qty:g} × {fmt_money(price_kop)} = {fmt_money(total_kop)}"
+        )
+    return "\n".join(lines)
+
+/Users/ilaeliseenko/Desktop/loyalty-bot/bot/handlers.py
+
+import logging
+import requests
+from datetime import datetime, timedelta, date
+from aiogram import types, F
+from aiogram.enums import ContentType, ChatAction
+from aiogram.filters import CommandStart
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
+from aiogram.utils.keyboard import ReplyKeyboardMarkup, InlineKeyboardBuilder
+from bot.yclients import services, staff, free_slots, book_dates, create_record, format_date_russian
+from bot.db import register_mapping, user_contact
+from bot.config import E_MONEY, REDEEM_CAP
+from bot.db import (get_agent_id, register_mapping, get_balance, change_balance, conn)
+from bot.moysklad import (find_agent_by_phone, fetch_shipments, fetch_demand_full, apply_discount)
+from bot.moysklad import MS_BASE, HEADERS
+from bot.formatting import fmt_money, fmt_date_local, render_positions
+from bot.accrual import doc_age_seconds, accrue_for_demand
+
+# Настройка логирования
+log = logging.getLogger(__name__)
+
+# UUID атрибутов МойСклад
+COMPANY_ID = 902665
+VIN_ATTR_ID   = "9622737b-b47d-11ee-0a80-066f0015f528"
+BRAND_ATTR_ID = "a308e9de-b47d-11ee-0a80-0d3b0016ecc6"
+ODO_ATTR_ID   = "58075519-b48a-11ee-0a80-052a0018b89c"
+REC_ATTR_ID   = "845f0de1-b4a6-11ee-0a80-103900016c42"
+
+class Auth(StatesGroup):
+    wait_name = State()
+
+# ─────────────────────────── клавиатуры ────────────────────────────
+MAIN_MENU_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [types.KeyboardButton(text="Баланс"), types.KeyboardButton(text="Списать баллы")],
+        [types.KeyboardButton(text="История посещений")],
+        [types.KeyboardButton(text="Записаться")],
+    ],
+    resize_keyboard=True,
+)
+
+def confirm_redeem_kb() -> types.InlineKeyboardMarkup:
+    """Клавиатура подтверждения списания бонусов"""
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Подтвердить списание", callback_data="redeem_confirm")
+    kb.button(text="❌ Отмена", callback_data="redeem_cancel")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def list_visits_kb(rows: list[dict]) -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for d in rows:
+        kb.button(
+            text=f"Чек №{d.get('name') or d['id'][:8]} · {fmt_date_local(d['moment'])}",
+            callback_data=f"visit_{d['id']}",
+        )
+    kb.button(text="◀️ Назад", callback_data="back_main")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+def visit_detail_kb() -> types.InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="◀️ К списку", callback_data="back_history")
+    kb.button(text="🏠 Главное меню", callback_data="back_main")
+    kb.adjust(2)
+    return kb.as_markup()
+
+# ─────────────────────────── регистр хендлеров ──────────────────────
+
+def register(dp):
+
+    # /start
+    @dp.message(CommandStart())
+    async def cmd_start(m: types.Message):
+        aid = get_agent_id(m.from_user.id)
+        if aid:
+            return await m.answer(
+                "✅ Вы уже авторизованы.\nВыберите действие:",
+                reply_markup=MAIN_MENU_KB
+            )
+            
+        kb = ReplyKeyboardMarkup(
+            keyboard=[[types.KeyboardButton(text="Поделиться номером", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        )
+        await m.answer(
+            "👋 Добро пожаловать в бонусную программу!\n\n"
+            "Для начала работы поделитесь номером телефона:",
+            reply_markup=kb
+        )
+
+    # контактный номер
+    # ─────────────────────────── контакт (авторизация) ───────────────────────────
+    @dp.message(F.content_type == ContentType.CONTACT)
+    async def contact(m: types.Message, state: FSMContext):
+        phone = m.contact.phone_number
+        aid   = find_agent_by_phone(phone)
+
+        # ─── клиент уже есть в МойСклад ─────────────────────────────────────────
+        if aid:
+            register_mapping(
+                tg_id   = m.from_user.id,
+                agent_id= aid,
+                phone   = phone,
+                fullname= m.contact.first_name or ""
+            )
+
+            # начислим бонусы, если пропустили последнюю отгрузку
+            last = fetch_shipments(aid, limit=1)
+            if last:
+                did = last[0]["id"]
+                already = conn.execute(
+                    "SELECT 1 FROM accrual_log WHERE demand_id=?", (did,)
+                ).fetchone()
+                if not already:
+                    full = fetch_demand_full(did)
+                    if doc_age_seconds(full["moment"]) >= 300:
+                        added = accrue_for_demand(full)
+                        if added:
+                            conn.execute(
+                                "INSERT INTO accrual_log(demand_id) VALUES(?)", (did,)
+                            )
+                            conn.commit()
+                            await m.answer(
+                                f"✅ Начислено за последнее посещение: {fmt_money(added)}"
+                            )
+
+            await m.answer("✅ Вы авторизованы.\nВыберите действие:",
+                        reply_markup=MAIN_MENU_KB)
+            return
+
+        # ─── новый клиент: спрашиваем ФИО и сохраняем номер в FSM ──────────────
+        await state.set_state(Auth.wait_name)
+        await state.update_data(phone=phone)          # сохраняем номер
+        await m.answer("Как к вам обращаться? (ФИО)")
+
+
+    # ─────────────────────── получили ФИО ───────────────────────────────────────
+    @dp.message(Auth.wait_name)
+    async def got_name(m: types.Message, state: FSMContext):
+        data  = await state.get_data()
+        phone = data["phone"]
+        name  = m.text.strip()
+
+        # ───── пробуем создать контрагента в МойСклад ─────
+        try:
+            payload = {
+                "name":  name,
+                "phone": phone,          # отображается в веб-интерфейсе
+                "phones": [              # остаётся и в массиве phones
+                    {"phone": phone}
+                ]
+            }
+            resp = requests.post(
+                f"{MS_BASE}/counterparty",
+                headers=HEADERS,
+                json=payload,
+                timeout=10,
+            )
+            resp.raise_for_status()      # ↑ выбросит исключение, если не 2xx
+            aid = resp.json()["id"]      # id созданного контрагента
+
+        except Exception as e:
+            await m.answer(f"❌ Не удалось создать клиента: {e}")
+            return
+
+        # сохраняем связь TG ↔ контрагент + контакты
+        register_mapping(m.from_user.id, aid, phone, name)
+
+        # Сообщение о начислении приветственных бонусов
+        await m.answer("✅ Вам начислено 100 приветственных бонусов!")
+
+        await state.clear()
+
+        await m.answer(
+            "✅ Клиент создан и авторизован.\nВыберите действие:",
+            reply_markup=MAIN_MENU_KB
+        )
+
+
+    # ─────────── «Записаться»  →  ШАГ 1: услуга ───────────
+    @dp.message(F.text == "Записаться")
+    async def msg_booking_start(m: types.Message):
+        try:
+            resp = services(COMPANY_ID)
+            services_list = resp["services"] if "services" in resp else resp["data"]["services"]
+        except Exception as e:
+            return await m.answer(f"Ошибка получения списка услуг: {e}")
+
+        kb = InlineKeyboardBuilder()
+        for svc in services_list:
+            kb.button(text=svc["title"], callback_data=f"bk_srv_{svc['id']}")   # bk_srv_<srv>
+        kb.button(text="◀️ Назад", callback_data="back_menu")
+        kb.adjust(1)
+        await m.answer("Выберите услугу:", reply_markup=kb.as_markup())
+
+
+    # ─────────── ШАГ 2: мастер ───────────
+  
+    @dp.callback_query(F.data.startswith("bk_srv_"))
+    async def cb_choose_staff(cq: types.CallbackQuery):
+        """После выбора услуги показываем доступных мастеров."""
+        await cq.answer()
+        srv_id = int(cq.data.split("_")[2])               # bk_srv_<srv_id>
+
+        # --- запрашиваем мастеров в YCLIENTS ---
+        try:
+            raw = staff(COMPANY_ID, [srv_id])             # <— ваш вызов к API
+            # API может вернуть либо список, либо словарь с ключами data/staff
+            if isinstance(raw, list):
+                staff_list = raw
+            elif isinstance(raw, dict):
+                staff_list = (
+                    raw.get("staff") or                   # { staff:[...] }
+                    raw.get("data", {}).get("staff") or   # { data:{ staff:[...] } }
+                    raw.get("data") or []                 # { data:[...] }
+                )
+            else:
+                raise TypeError(f"Неожиданный формат: {type(raw)}")
+        except Exception as e:
+            return await cq.message.answer(f"Ошибка получения сотрудников: {e}")
+
+        if not staff_list:
+            return await cq.message.answer("Нет доступных мастеров для этой услуги 😔")
+
+        # --- строим клавиатуру мастеров ---
+        kb = InlineKeyboardBuilder()
+        for st in staff_list:
+            # пропустим всё, что не похоже на словарь сотрудника
+            if not isinstance(st, dict):
+                continue
+            kb.button(
+                text=st.get("name", "—"),
+                callback_data=f"bk_stf_{srv_id}_{st['id']}"   # bk_stf_<srv_id>_<stf_id>
+            )
+        kb.button(text="◀️ Назад", callback_data="back_menu")
+        kb.adjust(1)
+
+        await cq.message.edit_text("Выберите специалиста:", reply_markup=kb.as_markup())
+
+
+
+    # ─────────── ШАГ 3: дата (7 ближайших дней) ───────────
+    @dp.callback_query(F.data.startswith("bk_stf_"))
+    async def cb_choose_day(cq: types.CallbackQuery):
+        await cq.answer()
+        _, _, srv_id, stf_id = cq.data.split("_", 3)
+        srv_id, stf_id = int(srv_id), int(stf_id)
+
+        today = date.today()
+        dates_resp = book_dates(
+            COMPANY_ID,
+            service_ids=[srv_id],
+            staff_id=stf_id,
+            date_from=today.isoformat(),
+            date_to=(today + timedelta(days=7)).isoformat(),
+        )
+        dates = dates_resp.get("booking_dates") or dates_resp.get("data", {}).get("booking_dates", [])
+
+        if not dates:
+            return await cq.answer("Ближайших слотов нет 😔", show_alert=True)
+
+        kb = InlineKeyboardBuilder()
+        for d in dates:
+            formatted_date = format_date_russian(d)
+            kb.button(
+                text=formatted_date,
+                callback_data=f"bk_day_{srv_id}_{stf_id}_{d}",
+            )
+        kb.button(text="◀️ Назад", callback_data=f"bk_srv_{srv_id}")
+        kb.adjust(2)
+        await cq.message.edit_text("Выберите дату:", reply_markup=kb.as_markup())
+
+
+    # ─────────── ШАГ 4: время ───────────
+    @dp.callback_query(F.data.startswith("bk_day_"))
+    async def cb_choose_time(cq: types.CallbackQuery):
+        await cq.answer()
+        _, _, srv_id, stf_id, day = cq.data.split("_", 4)
+        srv_id, stf_id = int(srv_id), int(stf_id)
+
+        try:
+            slots = free_slots(COMPANY_ID, stf_id, srv_id, day)
+        except Exception as e:
+            return await cq.message.answer(f"Ошибка получения времени: {e}")
+
+        if not slots:
+            return await cq.answer("На этот день свободного времени нет", show_alert=True)
+
+        kb = InlineKeyboardBuilder()
+        for s in slots:
+            kb.button(
+                text=s["time"],
+                callback_data=f"bk_tm_{srv_id}_{stf_id}_{day}_{s['datetime']}",
+            )
+        kb.button(text="◀️ Назад", callback_data=f"bk_stf_{srv_id}_{stf_id}")
+        kb.adjust(3)
+        await cq.message.edit_text("Выберите время:", reply_markup=kb.as_markup())
+
+
+    # ─────────── ШАГ 5: подтверждение ───────────
+    @dp.callback_query(F.data.startswith("bk_tm_"))
+    async def cb_confirm_record(cq: types.CallbackQuery):
+        await cq.answer()
+        _, _, srv_id, stf_id, day, iso_dt = cq.data.split("_", 5)
+        srv_id, stf_id = int(srv_id), int(stf_id)
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Подтвердить", callback_data=f"bk_ok_{srv_id}_{stf_id}_{iso_dt}")
+        kb.button(text="◀️ Назад", callback_data=f"bk_day_{srv_id}_{stf_id}_{day}")
+        kb.adjust(1)
+
+        await cq.message.edit_text(
+            f"<b>Проверьте запись</b>\n"
+            f"Услуга ID: {srv_id}\n"
+            f"Мастер ID: {stf_id}\n"
+            f"Дата: {day}\n"
+            f"Время: {iso_dt[11:16]}",
+            reply_markup=kb.as_markup(),
+        )
+
+
+    # ─────────── ШАГ 6: создание записи ───────────
+    @dp.callback_query(F.data.startswith("bk_ok_"))
+    async def cb_make_record(cq: types.CallbackQuery, state: FSMContext):
+        await cq.answer()
+        _, _, srv_id, stf_id, iso_dt = cq.data.split("_", 4)
+        srv_id, stf_id = int(srv_id), int(stf_id)
+
+        phone, fullname = user_contact(cq.from_user.id)
+
+        try:
+            create_record(
+                COMPANY_ID,
+                phone=phone,
+                fullname=fullname or "Клиент Telegram",
+                email="",
+                appointments=[
+                    {
+                        "id": 1,
+                        "services": [srv_id],
+                        "staff_id": stf_id,
+                        "datetime": iso_dt,
+                    }
+                ],
+            )
+            await cq.message.edit_text("🎉 Запись успешно создана!")
+        except Exception as e:
+            await cq.message.edit_text(f"Не удалось создать запись: {e}")
+
+
+
+    # баланс
+    @dp.message(F.text == "Баланс")
+    async def msg_balance(m: types.Message):
+        aid = get_agent_id(m.from_user.id)
+        if not aid:
+            return await m.answer("Сначала выполните /start")
+        await m.answer(f"Ваш бонусный счёт: {fmt_money(get_balance(aid))}")
+
+    @dp.message(F.text == "Списать баллы")
+    async def msg_redeem_prompt(m: types.Message, state: FSMContext):
+        aid = get_agent_id(m.from_user.id)
+        if not aid:
+            kb = ReplyKeyboardMarkup(
+                keyboard=[[types.KeyboardButton(text="Поделиться номером", request_contact=True)]],
+                resize_keyboard=True,
+                one_time_keyboard=True,
+            )
+            return await m.answer(
+                "⚠️ Для списания баллов необходима авторизация.\n"
+                "Пожалуйста, поделитесь номером телефона:",
+                reply_markup=kb
+            )
+
+        # Get current balance
+        balance = get_balance(aid)
+        if balance == 0:
+            return await m.answer(
+                "❌ На вашем счёте нет доступных баллов",
+                reply_markup=MAIN_MENU_KB
+            )
+
+        # Get last visit
+        visits = fetch_shipments(aid, limit=1)
+        if not visits:
+            return await m.answer(
+                "❌ История посещений пуста",
+                reply_markup=MAIN_MENU_KB
+            )
+
+        # Calculate available bonus amount
+        check = fetch_demand_full(visits[0]["id"])
+        max_kop = int(check["sum"] * REDEEM_CAP)
+        kop = min(balance, max_kop)
+
+        message = (
+            f"<b>💳 Списание бонусов</b>\n\n"
+            f"💰 Текущий баланс: <b>{fmt_money(balance)}</b>\n"
+            f"🧾 Чек №{check.get('name') or check['id'][:8]}\n"
+            f"💵 Сумма чека: <b>{fmt_money(check['sum'])}</b>\n"
+            f"✨ Доступно к списанию: <b>{fmt_money(kop)}</b>\n"
+            f"ℹ️ Можно списать не более 30% от суммы чека\n\n"
+            f"Подтвердить списание <b>{fmt_money(kop)}</b>?"
+        )
+
+        # Store redemption data in FSM
+        await state.update_data(
+            check_id=check["id"],
+            amount=kop
+        )
+
+        await m.answer(
+            message,
+            reply_markup=confirm_redeem_kb(),
+            parse_mode="HTML"
+        )
+
+    async def process_redeem(m: types.Message, rub_requested: int | None):
+        aid = get_agent_id(m.from_user.id)
+        if not aid:
+            return await m.answer("Сначала выполните /start")
+        bal_kop = get_balance(aid)
+        if bal_kop == 0:
+            return await m.answer("На счёте нет баллов.")
+
+        visits = fetch_shipments(aid, limit=1)
+        if not visits:
+            return await m.answer("История пуста.")
+        check = fetch_demand_full(visits[0]["id"])
+        max_kop = int(check["sum"] * REDEEM_CAP)
+        kop = min(bal_kop, max_kop, (rub_requested or max_kop) * 100)
+        if kop == 0:
+            return await m.answer(
+                f"Доступно к списанию: {fmt_money(max_kop)}. Баланс: {fmt_money(bal_kop)}."
+            )
+
+        percent = round(kop / check["sum"] * 100, 2)
+        apply_discount(check["id"], percent, check["positions"]["rows"])
+        change_balance(aid, -kop)
+        await m.answer(
+            f"Списано {fmt_money(kop)} (≈{percent}% от чека).\n"
+            f"Баланс: {fmt_money(bal_kop - kop)}",
+            reply_markup=MAIN_MENU_KB,
+        )
+
+    @dp.callback_query(F.data == "redeem_confirm")
+    async def cb_redeem_confirm(cq: types.CallbackQuery, state: FSMContext):
+        aid = get_agent_id(cq.from_user.id)
+        if not aid:
+            await cq.answer("⚠️ Необходима авторизация", show_alert=True)
+            return
+
+        data = await state.get_data()
+        amount = data.get("amount", 0)
+        check_id = data.get("check_id")
+
+        if not amount or not check_id:
+            await cq.answer("❌ Ошибка данных", show_alert=True)
+            return
+
+        try:
+            # Apply discount and update balance
+            check = fetch_demand_full(check_id)
+            percent = round(amount / check["sum"] * 100, 2)
+            apply_discount(check_id, percent, check["positions"]["rows"])
+            change_balance(aid, -amount)
+
+            await cq.message.edit_text(
+                f"✅ Списано {fmt_money(amount)} (≈{percent}% от чека)\n"
+                f"💰 Новый баланс: {fmt_money(get_balance(aid))}",
+                reply_markup=None
+            )
+        except Exception as e:
+            await cq.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+    @dp.callback_query(F.data == "redeem_cancel")
+    async def cb_redeem_cancel(cq: types.CallbackQuery):
+        await cq.answer("Списание отменено")
+        await cq.message.edit_text(
+            "❌ Списание отменено",
+            reply_markup=None
+        )
+
+    # история
+    @dp.message(F.text == "История посещений")
+    async def msg_history(m: types.Message):
+        aid = get_agent_id(m.from_user.id)
+        if not aid:
+            return await m.answer(
+                "⚠️ Для просмотра истории необходима авторизация.\n"
+                "Пожалуйста, выполните /start"
+            )
+
+        visits = fetch_shipments(aid, limit=20)
+        if not visits:
+            return await m.answer(
+                "📝 История посещений пока пуста",
+                reply_markup=MAIN_MENU_KB
+            )
+
+        await m.answer(
+            "📋 Выберите визит для просмотра деталей:",
+            reply_markup=list_visits_kb(visits)
+        )
+
+    # просмотр чека
+    @dp.callback_query(lambda c: c.data.startswith("visit_"))
+    async def cb_visit(callback: types.CallbackQuery):
+        vid = callback.data.replace("visit_", "")
+        try:
+            v = fetch_demand_full(vid)
+            if not v:
+                await callback.answer("❌ Отгрузка не найдена или была удалена")
+                return
+
+            text = (
+                f"📋 Чек №{v.get('name') or v['id'][:8]}\n"
+                f"📅 {fmt_date_local(v['moment'])}\n"
+                f"💰 Сумма: {fmt_money(v['sum'])}\n\n"
+                f"{render_positions(v['positions']['rows'])}"
+            )
+            
+            await callback.message.edit_text(text)
+            
+        except Exception as e:
+            log.error(f"Ошибка при получении деталей отгрузки: {e}")
+            await callback.answer("❌ Не удалось загрузить детали отгрузки")
+
+    # назад: из карточки в список
+    @dp.callback_query(F.data == "back_history")
+    async def cb_back_history(cq: types.CallbackQuery):
+        aid = get_agent_id(cq.from_user.id)
+        if not aid:
+            return await cq.answer()
+        visits = fetch_shipments(aid, limit=20)
+        if not visits:
+            return await cq.answer("История пуста.", show_alert=True)
+        await cq.message.edit_text("Недавние посещения:", reply_markup=list_visits_kb(visits))
+        await cq.answer()
+
+    # назад: главное меню
+    @dp.callback_query(F.data == "back_main")
+    async def cb_back_main(cq: types.CallbackQuery):
+        await cq.message.edit_text("Главное меню", reply_markup=None)
+        await cq.message.answer("Выберите действие:", reply_markup=MAIN_MENU_KB)
+        await cq.answer()
+
+/Users/ilaeliseenko/Desktop/loyalty-bot/bot/keyboards.py
+
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from .config import E_TRUCK
+from .formatting import fmt_date_local
+
+def shipments_kb(docs):
+    kb = InlineKeyboardBuilder()
+    for d in docs:
+        kb.button(
+            text=f"{E_TRUCK} №{d.get('name') or d['id'][:8]} • {fmt_date_local(d['moment'])}",
+            callback_data=f"ship_{d['id']}"
+        )
+    kb.adjust(1)
+    return kb.as_markup()
+
+
+/Users/ilaeliseenko/Desktop/loyalty-bot/bot/main.py
+
+# loyalty-bot/bot/main.py
+import asyncio
+import logging
+
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from bot.config import BOT_TOKEN
+from bot.handlers import register as register_handlers
+from bot.accrual import accrual_loop
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:%(name)s: %(message)s",
+)
+
+async def main() -> None:
+    if not BOT_TOKEN:
+        logging.error("BOT_TOKEN is not set. Please check your configuration.")
+        return
+
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode="HTML"),
+    )
+    dp = Dispatcher(storage=MemoryStorage())
+
+    # Register all handlers
+    register_handlers(dp)
+
+    async with bot:
+        try:
+            # Background task for bonus accrual
+            asyncio.create_task(accrual_loop())
+        except Exception as e:
+            logging.error(f"Error in accrual_loop: {e}")
+
+        # Remove old updates and start polling
+        await bot.delete_webhook(drop_pending_updates=True)
+        await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logging.error(f"Unhandled exception: {e}")
+
+/Users/ilaeliseenko/Desktop/loyalty-bot/bot/moysklad.py
+
+import requests, logging
+from typing import Optional
+from datetime import datetime, timedelta
+from .config import MS_BASE, HEADERS
+
+MS_BASE = "https://api.moysklad.ru/api/remap/1.2"
+
+# Настройка логирования
+log = logging.getLogger(__name__)
+
+def _get(path: str, params: dict | None = None) -> dict:
+    """
+    Выполняет GET-запрос к API МойСклад
+    """
+    url = f"{MS_BASE}/{path.lstrip('/')}"
+    try:
+        response = requests.get(
+            url,
+            headers=HEADERS,
+            params=params or {},
+            timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        log.error(f"MoySklad API error ({url}): {e}")
+        raise
+
+def find_agent_by_phone(phone: str) -> Optional[str]:
+    digits = "".join(filter(str.isdigit, phone))
+    rows = _get("counterparty", {"search": digits, "limit": 1}).get("rows", [])
+    return rows[0]["id"] if rows else None
+
+def fetch_shipments(agent_id: str, limit: int = 20, order: str = "desc") -> list[dict]:
+    """Получает список отгрузок для контрагента"""
+    try:
+        params = {
+            "filter": f"agent={MS_BASE}/entity/counterparty/{agent_id}",
+            "order": f"moment,{order}",
+            "limit": limit
+        }
+        
+        result = _get("entity/demand", params)
+        shipments = result.get("rows", [])
+        
+        # Фильтруем удаленные отгрузки
+        valid_shipments = []
+        for shipment in shipments:
+            try:
+                if fetch_demand_full(shipment["id"]):
+                    valid_shipments.append(shipment)
+            except Exception:
+                continue
+                
+        return valid_shipments
+        
+    except Exception as e:
+        log.error(f"Ошибка при получении списка отгрузок: {e}")
+        return []
+
+def fetch_demand_full(did: str) -> Optional[dict]:
+    """
+    Получает полную информацию об отгрузке
+    Args:
+        did: ID отгрузки
+    Returns:
+        Словарь с данными отгрузки или None если отгрузка не найдена
+    """
+    try:
+        return _get(f"entity/demand/{did}", {"expand": "positions,positions.assortment"})
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            log.warning(f"Отгрузка не найдена: {did}")
+            return None
+        log.error(f"Ошибка при получении отгрузки {did}: {e}")
+        raise
+
+def apply_discount(did: str, percent: float, positions: list):
+    body = {"positions": [{"id": p["id"], "discount": percent} for p in positions]}
+    resp = requests.put(f"{MS_BASE}/demand/{did}", headers=HEADERS, json=body, timeout=10)
+    resp.raise_for_status()
+
+def fetch_demands(limit: int = 10) -> list[dict]:
+    """
+    Получает список последних отгрузок
+    Args:
+        limit: максимальное количество отгрузок
+    Returns:
+        Список отгрузок, отсортированный по дате по убыванию
+    """
+    params = {
+        "limit": limit,
+        "order": "moment,desc",
+        "filter": "state.name=Отгружен"
+    }
+    
+    try:
+        return _get("entity/demand", params)["rows"]
+    except Exception as e:
+        log.error(f"Error fetching demands: {e}")
+        return []
+
+/Users/ilaeliseenko/Desktop/loyalty-bot/bot/yclients.py
+
+# loyalty-bot/bot/yclients.py
+import requests
+import locale
+from datetime import date
+from .config import YCLIENTS_PARTNER_TOKEN
+
+API = "https://api.yclients.com/api/v1"
+HEADERS = {
+    "Authorization": f"Bearer {YCLIENTS_PARTNER_TOKEN}",
+    "Accept":        "application/vnd.yclients.v2+json",
+    "Content-Type":  "application/json",
+}
+
+
+# ─────────────────────────── helpers ────────────────────────────
+def _get(path: str, params: dict | None = None):
+    """Внутренний GET: всегда возвращаем только data из ответа."""
+    r = requests.get(API + path, headers=HEADERS, params=params or {}, timeout=10)
+    r.raise_for_status()
+    return r.json()["data"]          # <-- берём ровно data
+
+def book_dates(company_id: int, **params) -> dict:
+    """
+    GET /book_dates/{company_id}
+    Возвращает словарь с ключами booking_dates, booking_days, …
+    """
+    return _get(f"/book_dates/{company_id}", params)
+
+
+def _post(path: str, json: dict):
+    """Внутренний POST: всегда возвращаем только data из ответа."""
+    r = requests.post(API + path, headers=HEADERS, json=json, timeout=10)
+    r.raise_for_status()
+    return r.json()["data"]          # <-- берём ровно data
+
+
+def format_date_russian(date_iso: str) -> str:
+    """Форматирует дату с русскими месяцами."""
+    locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
+    return date.fromisoformat(date_iso).strftime("%d %b (%a)")
+
+
+# ───────────────────── публичные обёртки API ────────────────────
+def services(company_id: int):
+    """GET /book_services/{company_id}"""
+    return _get(f"/book_services/{company_id}")
+
+
+def staff(company_id: int, service_ids: list[int] | None = None):
+    """GET /book_staff/{company_id}"""
+    params = {}
+    if service_ids:
+        params["service_ids[]"] = service_ids
+    return _get(f"/book_staff/{company_id}", params)
+
+
+def free_slots(
+    company_id: int,
+    staff_id:   int,
+    service_id: int,
+    date_iso:   str,
+) -> list[dict]:
+    """
+    GET /book_times/{company_id}/{staff_id}/{date}
+    Возвращает список словарей вида:
+        {"time": "17:30", "datetime": "2025-06-17T14:30:00+03:00"}
+    """
+    return _get(
+        f"/book_times/{company_id}/{staff_id}/{date_iso}",
+        params={"service_ids[]": service_id},
+    )
+
+
+def create_record(
+    company_id:      int,
+    phone:           str,
+    fullname:        str,
+    email:           str,
+    appointments:    list[dict],
+    comment:         str | None = None,
+    code:            str | None = None,
+    notify_by_sms:   int | None = None,
+    notify_by_email: int | None = None,
+):
+    """POST /book_record/{company_id}"""
+    payload = {
+        "phone":        phone,
+        "fullname":     fullname,
+        "email":        email,
+        "appointments": appointments,
+    }
+    if comment:             payload["comment"]          = comment
+    if code:                payload["code"]             = code
+    if notify_by_sms is not None:
+        payload["notify_by_sms"] = notify_by_sms
+    if notify_by_email is not None:
+        payload["notify_by_email"] = notify_by_email
+
+    return _post(f"/book_record/{company_id}", payload)
+
+
+# ───── совместимость со старым кодом ─────
+def book_services(company_id: int, **params):
+    """Старое имя функции — оставляем алиас для совместимости."""
+
+    return services(company_id, **params)
+
+
+BOT_TOKEN=7914899311:AAGY4CjuMqZX3w1eS7zCM2yNMW3312xCwPE
+MS_TOKEN=ecfb2a801095bded8b05cabbb597bbce3dc59e73

@@ -1,0 +1,7 @@
+aiogram>=3.0
+python-dateutil
+sqlalchemy
+requests
+tzdata
+pytz
+APScheduler>=3.0.0

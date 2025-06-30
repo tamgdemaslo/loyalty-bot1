@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Telegram WebApp Data</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .debug-section {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .debug-title {
+            font-weight: bold;
+            color: var(--tg-theme-button-color, #0088cc);
+            margin-bottom: 10px;
+        }
+        .debug-data {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+            white-space: pre-wrap;
+        }
+        .test-btn {
+            background: var(--tg-theme-button-color, #0088cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 14px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Debug: Telegram WebApp Data</h1>
+    
+    <div class="debug-section">
+        <div class="debug-title">📱 Telegram WebApp Info:</div>
+        <div class="debug-data" id="webapp-info">Загрузка...</div>
+    </div>
+    
+    <div class="debug-section">
+        <div class="debug-title">👤 User Data (initDataUnsafe):</div>
+        <div class="debug-data" id="user-data">Загрузка...</div>
+    </div>
+    
+    <div class="debug-section">
+        <div class="debug-title">🔐 Init Data (Raw):</div>
+        <div class="debug-data" id="init-data">Загрузка...</div>
+    </div>
+    
+    <div class="debug-section">
+        <div class="debug-title">🎨 Theme Parameters:</div>
+        <div class="debug-data" id="theme-data">Загрузка...</div>
+    </div>
+    
+    <button class="test-btn" onclick="testAPI()">🧪 Test API Connection</button>
+    <button class="test-btn" onclick="copyDebugInfo()">📋 Copy Debug Info</button>
+    
+    <div id="api-status"></div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        
+        // Инициализация WebApp
+        tg.ready();
+        tg.expand();
+        
+        // Отображаем информацию о WebApp
+        document.getElementById('webapp-info').textContent = JSON.stringify({
+            version: tg.version,
+            platform: tg.platform,
+            colorScheme: tg.colorScheme,
+            isExpanded: tg.isExpanded,
+            viewportHeight: tg.viewportHeight,
+            viewportStableHeight: tg.viewportStableHeight,
+            headerColor: tg.headerColor,
+            backgroundColor: tg.backgroundColor,
+            isClosingConfirmationEnabled: tg.isClosingConfirmationEnabled
+        }, null, 2);
+        
+        // Отображаем данные пользователя
+        document.getElementById('user-data').textContent = JSON.stringify(tg.initDataUnsafe, null, 2);
+        
+        // Отображаем сырые данные
+        document.getElementById('init-data').textContent = tg.initData || 'Нет данных';
+        
+        // Отображаем тему
+        document.getElementById('theme-data').textContent = JSON.stringify(tg.themeParams, null, 2);
+        
+        // Функция тестирования API
+        async function testAPI() {
+            const statusDiv = document.getElementById('api-status');
+            statusDiv.innerHTML = '<div class="status">🔄 Тестирование соединения с API...</div>';
+            
+            try {
+                console.log('Testing API with data:', {
+                    initData: tg.initData,
+                    user: tg.initDataUnsafe?.user
+                });
+                
+                const response = await fetch('/api/user', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        initData: tg.initData || '',
+                        user: tg.initDataUnsafe?.user || null
+                    })
+                });
+                
+                const responseText = await response.text();
+                console.log('API Response:', responseText);
+                
+                if (response.ok) {
+                    const data = JSON.parse(responseText);
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ API работает! 
+                            <div style="margin-top: 10px;">
+                                <strong>Данные пользователя:</strong><br>
+                                Имя: ${data.name}<br>
+                                Телефон: ${data.phone}<br>
+                                Баланс: ${data.balance} ₽<br>
+                                Уровень: ${data.level}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="status error">
+                            ❌ Ошибка API (${response.status}): 
+                            <div style="margin-top: 10px; font-family: monospace; font-size: 12px;">
+                                ${responseText}
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('API Test Error:', error);
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ Ошибка соединения: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // Функция копирования отладочной информации
+        function copyDebugInfo() {
+            const debugInfo = {
+                webAppInfo: JSON.parse(document.getElementById('webapp-info').textContent),
+                userData: JSON.parse(document.getElementById('user-data').textContent),
+                initData: document.getElementById('init-data').textContent,
+                themeData: JSON.parse(document.getElementById('theme-data').textContent),
+                url: window.location.href,
+                userAgent: navigator.userAgent,
+                timestamp: new Date().toISOString()
+            };
+            
+            navigator.clipboard.writeText(JSON.stringify(debugInfo, null, 2)).then(() => {
+                tg.showAlert('Отладочная информация скопирована в буфер обмена!');
+            }).catch(() => {
+                tg.showAlert('Не удалось скопировать данные');
+            });
+        }
+        
+        // Автоматический тест при загрузке
+        setTimeout(testAPI, 1000);
+    </script>
+</body>
+</html>

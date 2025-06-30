@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ панель - Система лояльности</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .nav-link {
+            color: rgba(255, 255, 255, 0.8) !important;
+            transition: all 0.3s;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: white !important;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+        .stats-card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s;
+        }
+        .stats-card:hover {
+            transform: translateY(-2px);
+        }
+        .table-responsive {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .btn-action {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        .level-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+        }
+        .level-1 { background: #6c757d; color: white; }
+        .level-2 { background: #28a745; color: white; }
+        .level-3 { background: #ffc107; color: black; }
+        .level-4 { background: #fd7e14; color: white; }
+        .level-5 { background: #dc3545; color: white; }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        .search-box {
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Боковое меню -->
+            <div class="col-md-2 sidebar p-3">
+                <div class="d-flex align-items-center mb-4">
+                    <i class="bi bi-gear-fill fs-3 text-white me-2"></i>
+                    <h5 class="text-white mb-0">Админ панель</h5>
+                </div>
+                <nav class="nav flex-column">
+                    <a class="nav-link active" href="#" onclick="showSection('dashboard')">
+                        <i class="bi bi-speedometer2 me-2"></i>Дашборд
+                    </a>
+                    <a class="nav-link" href="#" onclick="showSection('users')">
+                        <i class="bi bi-people me-2"></i>Пользователи
+                    </a>
+                    <a class="nav-link" href="#" onclick="showSection('transactions')">
+                        <i class="bi bi-receipt me-2"></i>Транзакции
+                    </a>
+                    <a class="nav-link" href="#" onclick="showSection('analytics')">
+                        <i class="bi bi-graph-up me-2"></i>Аналитика
+                    </a>
+                    <a class="nav-link" href="#" onclick="exportUsers()">
+                        <i class="bi bi-download me-2"></i>Экспорт данных
+                    </a>
+                </nav>
+            </div>
+
+            <!-- Основной контент -->
+            <div class="col-md-10 p-4">
+                <!-- Дашборд -->
+                <div id="dashboard-section">
+                    <h2 class="mb-4">Дашборд системы лояльности</h2>
+                    
+                    <!-- Статистические карточки -->
+                    <div class="row mb-4" id="stats-cards">
+                        <div class="loading">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Графики -->
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="card stats-card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Активность за последние 30 дней</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="activityChart" style="height: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card stats-card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Распределение по уровням</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="levelsChart" style="height: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Пользователи -->
+                <div id="users-section" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2>Управление пользователями</h2>
+                        <div class="d-flex gap-2">
+                            <input type="text" class="form-control search-box" id="userSearch" 
+                                   placeholder="Поиск по имени, телефону, ID...">
+                            <button class="btn btn-outline-primary" onclick="searchUsers()">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>TG ID</th>
+                                            <th>Имя</th>
+                                            <th>Телефон</th>
+                                            <th>Баланс</th>
+                                            <th>Уровень</th>
+                                            <th>Потрачено</th>
+                                            <th>Регистрация</th>
+                                            <th>Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="usersTable">
+                                        <tr>
+                                            <td colspan="8" class="text-center">
+                                                <div class="spinner-border" role="status">
+                                                    <span class="visually-hidden">Загрузка...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <nav aria-label="Pagination">
+                                <ul class="pagination justify-content-center" id="usersPagination">
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Транзакции -->
+                <div id="transactions-section" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2>История транзакций</h2>
+                        <div class="d-flex gap-2">
+                            <select class="form-select" id="transactionType" style="width: auto;">
+                                <option value="">Все типы</option>
+                                <option value="accrual">Начисления</option>
+                                <option value="redemption">Списания</option>
+                            </select>
+                            <button class="btn btn-outline-primary" onclick="filterTransactions()">
+                                Фильтр
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Пользователь</th>
+                                            <th>Тип</th>
+                                            <th>Сумма</th>
+                                            <th>Описание</th>
+                                            <th>Дата</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transactionsTable">
+                                        <tr>
+                                            <td colspan="6" class="text-center">
+                                                <div class="spinner-border" role="status">
+                                                    <span class="visually-hidden">Загрузка...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <nav aria-label="Pagination">
+                                <ul class="pagination justify-content-center" id="transactionsPagination">
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Аналитика -->
+                <div id="analytics-section" style="display: none;">
+                    <h2 class="mb-4">Аналитика</h2>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <select class="form-select" id="analyticsPeriod" onchange="loadAnalytics()">
+                                <option value="7">7 дней</option>
+                                <option value="30" selected>30 дней</option>
+                                <option value="90">90 дней</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">Ежедневная активность</h6>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="dailyAnalyticsChart" style="height: 400px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальные окна -->
+    
+    <!-- Модалка изменения баланса -->
+    <div class="modal fade" id="balanceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Изменить баланс</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="balanceForm">
+                        <input type="hidden" id="balanceAgentId">
+                        <div class="mb-3">
+                            <label for="balanceAmount" class="form-label">Сумма изменения</label>
+                            <input type="number" class="form-control" id="balanceAmount" required>
+                            <div class="form-text">Положительное число для начисления, отрицательное для списания</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="balanceDescription" class="form-label">Описание</label>
+                            <input type="text" class="form-control" id="balanceDescription" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="submitBalanceChange()">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка изменения уровня -->
+    <div class="modal fade" id="levelModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Изменить уровень лояльности</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="levelForm">
+                        <input type="hidden" id="levelAgentId">
+                        <div class="mb-3">
+                            <label for="levelId" class="form-label">Уровень</label>
+                            <select class="form-select" id="levelId" required>
+                                <option value="1">1 - Новичок</option>
+                                <option value="2">2 - Бронзовый</option>
+                                <option value="3">3 - Серебряный</option>
+                                <option value="4">4 - Золотой</option>
+                                <option value="5">5 - Платиновый</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="submitLevelChange()">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
