@@ -4,8 +4,8 @@ FROM node:18-alpine
 ARG MINIAPP_URL=https://loyalty-bot1.onrender.com
 ENV MINIAPP_URL=$MINIAPP_URL
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++ sqlite-dev
+# Install build dependencies including setuptools for Python distutils compatibility
+RUN apk add --no-cache python3 make g++ sqlite-dev py3-setuptools
 
 # Set working directory
 WORKDIR /app
