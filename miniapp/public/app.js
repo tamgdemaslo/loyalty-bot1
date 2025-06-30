@@ -1,6 +1,24 @@
 // Telegram Mini App - Система лояльности
 class LoyaltyApp {
     constructor() {
+        console.log('📱 Initializing LoyaltyApp...');
+        console.log('💭 window.Telegram exists:', !!window.Telegram);
+        
+        // Защита от отсутствия Telegram объекта (для локальной разработки)
+        if (!window.Telegram) {
+            console.log('⚠️ Creating stub Telegram WebApp object for development');
+            window.Telegram = { 
+                WebApp: { 
+                    ready() { console.log('📍 Stub ready() called'); }, 
+                    expand() { console.log('📍 Stub expand() called'); }, 
+                    initData: '', 
+                    initDataUnsafe: { user: { id: 12345, first_name: 'DevUser' } },
+                    BackButton: { show() {}, hide() {}, onClick(cb) {} },
+                    showAlert(text) { alert(text); }
+                } 
+            };
+        }
+        
         this.tg = window.Telegram.WebApp;
         this.userData = null;
         this.currentPage = 'dashboard';
