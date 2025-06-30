@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
-const LoyaltyAPI = require('./api_integration');
+const loyaltyAPI = require('./api_postgres');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,193 +55,240 @@ app.get('/', (req, res) => {
 // API эндпоинты
 
 // Получение данных пользователя
-app.post('/api/user', (req, res) => {
-    const { initData } = req.body;
-    
-    // В продакшене обязательно валидировать данные
-    // if (!validateTelegramWebAppData(initData)) {
-    //     return res.status(401).json({ error: 'Unauthorized' });
-    // }
-    
-    // Парсим данные пользователя
-    const urlParams = new URLSearchParams(initData);
-    const userParam = urlParams.get('user');
-    let user = null;
-    
-    if (userParam) {
-        try {
-            user = JSON.parse(decodeURIComponent(userParam));
-        } catch (error) {
-            console.error('Error parsing user data:', error);
+app.post('/api/user', async (req, res) => {
+    const { initData, user: directUser } = req.body;
+    console.log('--- Received /api/user request ---');
+
+    try {
+        let user = null;
+
+        // Extract user data from initData or directUser
+        if (directUser && directUser.id) {
+            user = directUser;
+        } else if (initData) {
+            const urlParams = new URLSearchParams(initData);
+            const userParam = urlParams.get('user');
+            if (userParam) {
+                try {
+                    user = JSON.parse(decodeURIComponent(userParam));
+                } catch (e) {
+                     console.error('Failed to parse user data from initData', e);
+                }
+            }
         }
+
+        // If no user data, force phone auth
+        if (!user || !user.id) {
+            console.log('User ID not found in initData, requires phone auth.');
+            return res.status(404).json({
+                error: 'Phone authorization required',
+                requiresPhoneAuth: true,
+                firstName: 'пользователь'
+            });
+        }
+        
+        console.log(`User found in initData: ${user.id} (${user.first_name})`);
+
+        // Check if user is mapped in our DB
+        const agentId = await loyaltyAPI.getAgentId(user.id);
+
+        if (!agentId) {
+            // User is in Telegram, but not mapped in our DB yet.
+            console.log(`User ${user.id} not found in DB, requires phone auth.`);
+            return res.status(404).json({
+                error: 'User not registered, phone authorization required',
+                requiresPhoneAuth: true,
+                firstName: user.first_name || 'пользователь'
+            });
+        }
+
+        // User is registered! Fetch all data and return it.
+        console.log(`User ${user.id} is mapped to agent ${agentId}. Fetching full data...`);
+        const [balance, loyaltyLevel, contact, statistics] = await Promise.all([
+            loyaltyAPI.getBalance(agentId),
+            loyaltyAPI.getLoyaltyLevel(agentId),
+            loyaltyAPI.getUserContact(user.id),
+            loyaltyAPI.getClientStatistics(agentId)
+        ]);
+
+        const levelNames = ['', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+        const levelName = levelNames[loyaltyLevel.level_id] || 'Bronze';
+
+        const userData = {
+            id: user.id,
+            name: contact.fullname || user.first_name || 'Пользователь',
+            phone: contact.phone,
+            balance: Math.round(balance / 100),
+            level: levelName,
+            levelId: loyaltyLevel.level_id,
+            totalSpent: Math.round(loyaltyLevel.total_spent / 100),
+            totalEarned: Math.round(loyaltyLevel.total_earned / 100),
+            totalRedeemed: Math.round(loyaltyLevel.total_redeemed / 100),
+            totalVisits: statistics.totalVisits,
+            thisYearVisits: statistics.thisYearVisits,
+            averageCheck: Math.round(statistics.averageCheck / 100),
+            registeredDate: new Date().toISOString().split('T')[0], // Placeholder
+            isNewUser: false
+        };
+
+        console.log('Successfully fetched user data. Returning 200 OK.');
+        res.json(userData);
+
+    } catch (error) {
+        console.error('Error in /api/user:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
-    
-    // Здесь должен быть запрос к базе данных
-    // Возвращаем демо данные
-    const userData = {
-        id: user?.id || 12345,
-        name: user?.first_name || 'Демо пользователь',
-        phone: '+7 XXX XXX-XX-XX',
-        balance: 2450,
-        level: 'Silver',
-        totalSpent: 75000,
-        totalEarned: 5420,
-        totalRedeemed: 2970,
-        totalVisits: 12,
-        registeredDate: '2023-05-15'
-    };
-    
-    res.json(userData);
 });
 
 // Получение истории посещений
-app.get('/api/visits/:userId', (req, res) => {
+app.get('/api/visits/:userId', async (req, res) => {
     const { userId } = req.params;
     
-    // Демо данные
-    const visits = [
-        {
-            id: 1,
-            title: 'Чек №12345',
-            amount: 8500,
-            date: '2024-01-20',
-            services: ['Замена масла', 'Диагностика'],
-            car: {
-                model: 'Toyota Camry',
-                vin: 'JT2BF28K6X0123456',
-                mileage: 48500
-            },
-            bonusEarned: 425
-        },
-        {
-            id: 2,
-            title: 'Чек №12344',
-            amount: 15300,
-            date: '2024-01-15',
-            services: ['ТО-15000', 'Замена фильтров'],
-            car: {
-                model: 'Toyota Camry',
-                vin: 'JT2BF28K6X0123456',
-                mileage: 45000
-            },
-            bonusEarned: 765
-        },
-        {
-            id: 3,
-            title: 'Чек №12343',
-            amount: 3200,
-            date: '2024-01-10',
-            services: ['Развал-схождение'],
-            car: {
-                model: 'Toyota Camry',
-                vin: 'JT2BF28K6X0123456',
-                mileage: 44800
-            },
-            bonusEarned: 160
+    try {
+        // Получаем ID агента по Telegram ID
+        const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
+        if (!agentId) {
+            return res.status(404).json({ error: 'User not found' });
         }
-    ];
-    
-    res.json(visits);
+        
+        // Получаем посещения
+        const visits = await loyaltyAPI.getRecentVisits(agentId, 50);
+        
+        // Форматируем данные для фронтенда
+        const formattedVisits = visits.map(visit => ({
+            id: visit.id,
+            title: `Чек №${visit.name}`,
+            amount: Math.round(visit.sum / 100), // Конвертируем копейки в рубли
+            date: visit.moment.split('T')[0],
+            services: visit.services || [],
+            car: visit.car || {},
+            bonusEarned: Math.round(visit.bonusEarned / 100)
+        }));
+        
+        res.json(formattedVisits);
+    } catch (error) {
+        console.error('Error getting visits:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Получение транзакций
-app.get('/api/transactions/:userId', (req, res) => {
+app.get('/api/transactions/:userId', async (req, res) => {
     const { userId } = req.params;
     
-    // Демо данные
-    const transactions = [
-        {
-            id: 1,
-            type: 'accrual',
-            description: 'Начисление за визит #12345',
-            amount: 425,
-            date: '2024-01-20',
-            visitId: 1
-        },
-        {
-            id: 2,
-            type: 'redemption',
-            description: 'Списание по чеку #12344',
-            amount: -320,
-            date: '2024-01-18',
-            visitId: 2
-        },
-        {
-            id: 3,
-            type: 'accrual',
-            description: 'Начисление за визит #12344',
-            amount: 765,
-            date: '2024-01-15',
-            visitId: 2
-        },
-        {
-            id: 4,
-            type: 'bonus',
-            description: 'Приветственный бонус',
-            amount: 100,
-            date: '2023-05-15',
-            visitId: null
+    try {
+        // Получаем ID агента по Telegram ID
+        const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
+        if (!agentId) {
+            return res.status(404).json({ error: 'User not found' });
         }
-    ];
-    
-    res.json(transactions);
+        
+        // Получаем транзакции
+        const transactions = await loyaltyAPI.getTransactions(agentId, 50);
+        
+        // Форматируем данные для фронтенда
+        const formattedTransactions = transactions.map((transaction, index) => ({
+            id: index + 1,
+            type: transaction.transaction_type,
+            description: transaction.description,
+            amount: Math.round(transaction.amount / 100), // Конвертируем копейки в рубли
+            date: transaction.created_at.split(' ')[0], // Берем только дату
+            visitId: transaction.related_demand_id
+        }));
+        
+        res.json(formattedTransactions);
+    } catch (error) {
+        console.error('Error getting transactions:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Получение данных о техническом обслуживании
-app.get('/api/maintenance/:userId', (req, res) => {
+app.get('/api/maintenance/:userId', async (req, res) => {
     const { userId } = req.params;
     
-    // Демо данные
-    const maintenanceData = [
-        {
-            id: 1,
-            title: '🛢️ Замена моторного масла',
-            subtitle: 'Каждые 10,000 км или 12 месяцев',
-            status: 'soon',
-            lastPerformed: '2023-12-15',
-            lastMileage: 38500,
-            nextDue: 48500,
-            dueDate: '2024-12-15',
-            currentMileage: 45300
-        },
-        {
-            id: 2,
-            title: '🔧 ТО-15000',
-            subtitle: 'Каждые 15,000 км',
-            status: 'overdue',
-            lastPerformed: '2023-06-10',
-            lastMileage: 30000,
-            nextDue: 45000,
-            dueDate: null,
-            currentMileage: 45300
-        },
-        {
-            id: 3,
-            title: '🛡️ Замена тормозных колодок',
-            subtitle: 'Каждые 30,000 км',
-            status: 'ok',
-            lastPerformed: '2023-11-20',
-            lastMileage: 40000,
-            nextDue: 70000,
-            dueDate: null,
-            currentMileage: 45300
+    try {
+        // Получаем ID агента по Telegram ID
+        const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
+        if (!agentId) {
+            return res.status(404).json({ error: 'User not found' });
         }
-    ];
-    
-    res.json(maintenanceData);
+        
+        // Получаем данные о ТО
+        const maintenanceData = await loyaltyAPI.getMaintenanceStatus(agentId);
+        
+        // Форматируем данные для фронтенда
+        const formattedData = maintenanceData.map(item => ({
+            id: item.work_id,
+            title: item.work_info.name,
+            subtitle: `Каждые ${item.mileage_interval} км или ${item.time_interval} месяцев`,
+            status: item.status,  // 'ok', 'soon', 'overdue', 'never_done'
+            lastPerformed: item.last_maintenance ? item.last_maintenance.date.split('T')[0] : null,
+            lastMileage: item.last_maintenance ? item.last_maintenance.mileage : 0,
+            nextDue: item.next_mileage || 0,
+            dueDate: item.next_date ? item.next_date.split('T')[0] : null,
+            currentMileage: item.current_mileage || 0,
+            message: item.message
+        }));
+        
+        res.json(formattedData);
+    } catch (error) {
+        console.error('Error getting maintenance data:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Списание бонусов
-app.post('/api/redeem', (req, res) => {
+app.post('/api/redeem', async (req, res) => {
     const { userId, amount, description } = req.body;
     
-    // Здесь должна быть логика списания
-    // Возвращаем успешный результат
-    res.json({
-        success: true,
-        message: `Списано ${amount} бонусов`,
-        newBalance: 2450 - amount
-    });
+    try {
+        // Получаем ID агента по Telegram ID
+        const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
+        if (!agentId) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Проверяем достаточно ли бонусов
+        const currentBalance = await loyaltyAPI.getBalance(agentId);
+        const amountInCents = amount * 100; // Переводим в копейки
+        
+        if (currentBalance < amountInCents) {
+            return res.status(400).json({
+                error: 'Insufficient balance',
+                message: 'Недостаточно бонусов для списания'
+            });
+        }
+        
+        // Списываем бонусы
+        const success = await loyaltyAPI.changeBalance(agentId, -amountInCents);
+        if (!success) {
+            return res.status(500).json({
+                error: 'Failed to redeem bonuses',
+                message: 'Не удалось списать бонусы'
+            });
+        }
+        
+        // Добавляем запись о транзакции
+        await loyaltyAPI.addBonusTransaction(
+            agentId,
+            'redemption',
+            -amountInCents,
+            description || 'Списание бонусов в приложении'
+        );
+        
+        // Получаем новый баланс
+        const newBalance = await loyaltyAPI.getBalance(agentId);
+        
+        res.json({
+            success: true,
+            message: `Списано ${amount} бонусов`,
+            newBalance: Math.round(newBalance / 100) // Возвращаем в рублях
+        });
+    } catch (error) {
+        console.error('Error redeeming bonuses:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 // Загрузка SSL сертификатов
