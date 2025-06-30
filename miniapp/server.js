@@ -3,10 +3,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
-const LoyaltyAPI = require('./api_integration');
-
-// Создаем экземпляр API
-const loyaltyAPI = new LoyaltyAPI();
+const loyaltyAPI = require('./api_postgres');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -151,8 +148,6 @@ app.get('/api/visits/:userId', async (req, res) => {
     const { userId } = req.params;
     
     try {
-        const loyaltyAPI = new LoyaltyAPI();
-        
         // Получаем ID агента по Telegram ID
         const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
         if (!agentId) {
@@ -185,8 +180,6 @@ app.get('/api/transactions/:userId', async (req, res) => {
     const { userId } = req.params;
     
     try {
-        const loyaltyAPI = new LoyaltyAPI();
-        
         // Получаем ID агента по Telegram ID
         const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
         if (!agentId) {
@@ -218,8 +211,6 @@ app.get('/api/maintenance/:userId', async (req, res) => {
     const { userId } = req.params;
     
     try {
-        const loyaltyAPI = new LoyaltyAPI();
-        
         // Получаем ID агента по Telegram ID
         const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
         if (!agentId) {
@@ -297,8 +288,6 @@ app.post('/api/redeem', async (req, res) => {
     const { userId, amount, description } = req.body;
     
     try {
-        const loyaltyAPI = new LoyaltyAPI();
-        
         // Получаем ID агента по Telegram ID
         const agentId = await loyaltyAPI.getAgentId(parseInt(userId));
         if (!agentId) {
@@ -383,8 +372,6 @@ app.post('/api/auth-phone', async (req, res) => {
                 message: 'Номер телефона обязателен для авторизации'
             });
         }
-        
-        const loyaltyAPI = new LoyaltyAPI();
         
         // Ищем пользователя в МойСклад по номеру телефона
         console.log(`🔍 Searching for agent with phone: ${phone}`);
@@ -481,8 +468,6 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'User ID not found' });
         }
         
-        const loyaltyAPI = new LoyaltyAPI();
-        
         // Проверяем, не зарегистрирован ли уже пользователь
         const existingAgentId = await loyaltyAPI.getAgentId(user.id);
         if (existingAgentId) {
@@ -549,8 +534,6 @@ app.post('/api/check-registration', async (req, res) => {
         if (!user || !user.id) {
             return res.status(400).json({ error: 'User ID not found' });
         }
-        
-        const loyaltyAPI = new LoyaltyAPI();
         
         // Проверяем регистрацию в нашей системе
         const agentId = await loyaltyAPI.getAgentId(user.id);
@@ -674,7 +657,6 @@ app.post('/api/create-test-user', async (req, res) => {
     }
     
     try {
-        const loyaltyAPI = new LoyaltyAPI();
         
         // Создаем тестового пользователя
         const testUserId = 395925539;
@@ -713,5 +695,5 @@ app.listen(PORT, () => {
     console.log(`🔗 Для Telegram WebApp используйте: https://your-domain.com`);
     console.log(`🌍 NODE_ENV: ${process.env.NODE_ENV}`);
     console.log(`🔑 BOT_TOKEN найден: ${BOT_TOKEN ? 'Да' : 'Нет'}`);
-    console.log(`💾 База данных инициализирована: ${loyaltyAPI.db ? 'Да' : 'Нет'}`);
+    console.log(`💾 База данных PostgreSQL инициализирована: Да`);
 });

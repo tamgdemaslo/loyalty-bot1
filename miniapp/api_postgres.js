@@ -2,7 +2,7 @@
  * Модуль для работы с базой данных PostgreSQL в веб-приложении.
  * Заменяет функциональность исходного api_integration.js.
  */
-require('dotenv').config({ path: '.env.postgres' });
+require('dotenv').config();
 const { Pool } = require('pg');
 const logger = require('./logger');
 
@@ -30,6 +30,9 @@ const pool = new Pool({
   max: 20, // максимальное количество соединений в пуле
   idleTimeoutMillis: 30000, // время простоя соединения до закрытия
   connectionTimeoutMillis: 2000, // время ожидания подключения
+  ssl: {
+    rejectUnauthorized: false // Для подключения к Render PostgreSQL
+  }
 });
 
 // Проверка соединения при инициализации
