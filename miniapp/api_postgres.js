@@ -149,6 +149,29 @@ async function registerMapping(tgId, agentId, phone, fullname) {
  * @param {string} agentId - ID агента (контрагента)
  * @returns {Promise<number>} - Текущий баланс бонусов
  */
+/**
+ * Получает контактную информацию пользователя по Telegram ID
+ * @param {number} tgId - ID пользователя Telegram
+ * @returns {Promise<Object>} - Объект с контактной информацией
+ */
+async function getUserContact(tgId) {
+  try {
+    const result = await pool.query(`
+      SELECT phone, fullname
+      FROM user_map
+      WHERE tg_id = $1
+    `, [tgId]);
+
+    if (result.rows.length > 0) {
+      return result.rows[0];
+    }
+    return { phone: '', fullname: '' };
+  } catch (error) {
+    logger.error(`[getUserContact] Ошибка получения контакта: ${error.message}`);
+    return { phone: '', fullname: '' };
+  }
+}
+
 async function getBalance(agentId) {
   try {
     const result = await pool.query('SELECT balance FROM bonuses WHERE agent_id = $1', [agentId]);
@@ -436,6 +459,7 @@ module.exports = {
   getBalance,
   changeBalance,
   getLoyaltyLevel,
+  getUserContact,
   getBonusTransactions,
   addBonusTransaction,
   getMaintenanceHistory,
