@@ -4,8 +4,8 @@ FROM node:18-alpine
 ARG MINIAPP_URL=https://loyalty-bot1.onrender.com
 ENV MINIAPP_URL=$MINIAPP_URL
 
-# Install build dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++
+# Install build dependencies
+RUN apk add --no-cache python3 make g++ sqlite-dev
 
 # Set working directory
 WORKDIR /app
@@ -13,8 +13,9 @@ WORKDIR /app
 # Copy package files
 COPY miniapp/package*.json ./
 
-# Install dependencies (use npm install instead of npm ci to avoid lock file issues)
-RUN npm install --production
+# Clean npm cache and install dependencies with native modules rebuilt
+RUN npm cache clean --force \
+    && npm install --production --build-from-source
 
 # Copy app source
 COPY miniapp/ .
