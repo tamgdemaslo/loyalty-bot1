@@ -15,7 +15,8 @@ COPY miniapp/package*.json ./
 
 # Clean npm cache and install dependencies with native modules rebuilt
 RUN npm cache clean --force \
-    && npm install --production --build-from-source
+    && npm install --production --build-from-source \
+    && npm install pg
 
 # Copy app source
 COPY miniapp/ .
