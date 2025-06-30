@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, BarChart, Bar } from 'recharts';
 
 const AutoServiceApp = () => {
@@ -125,25 +125,26 @@ const AutoServiceApp = () => {
   };
 
   const renderDashboard = () => (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-4 md:p-8">
+      <div className="relative overflow-hidden rounded-xl md:rounded-2xl bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-4 md:p-8 shadow-lg">
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="relative z-10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-xl md:text-3xl font-bold text-white mb-2">
-                Добро пожаловать, {user.name.split(' ')[0]}!
+                Илья! {/* Используем имя из скриншота */}
+                <span className="ml-2 text-xl">👋</span>
               </h1>
               <p className="text-blue-100 text-sm md:text-lg">
-                Ваш автосервис премиум-класса
+                Ваш премиум автосервис всегда готов помочь
               </p>
             </div>
             <div className="text-left md:text-right">
               <div className="text-2xl md:text-4xl font-bold text-white">
-                {formatMoney(user.bonusBalance)}
+                {formatMoney(100)} {/* Используем значение из скриншота */}
               </div>
-              <div className="text-blue-100 text-sm md:text-base">Бонусный баланс</div>
+              <div className="text-blue-100 text-sm md:text-base">Бонусы</div>
             </div>
           </div>
         </div>
@@ -288,7 +289,7 @@ const AutoServiceApp = () => {
   );
 
   const renderVehicles = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-white">Мои автомобили</h2>
         <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
@@ -358,7 +359,7 @@ const AutoServiceApp = () => {
   );
 
   const renderServices = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       <h2 className="text-2xl font-bold text-white">Каталог услуг</h2>
       
       <div className="flex flex-wrap gap-2 mb-6">
@@ -396,7 +397,7 @@ const AutoServiceApp = () => {
   );
 
   const renderMaintenance = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       <h2 className="text-2xl font-bold text-white">Техническое обслуживание</h2>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -484,7 +485,7 @@ const AutoServiceApp = () => {
   );
 
   const renderAnalytics = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       <h2 className="text-2xl font-bold text-white">Аналитика и статистика</h2>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -544,7 +545,7 @@ const AutoServiceApp = () => {
   );
 
   const renderBooking = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       <h2 className="text-2xl font-bold text-white">Онлайн-запись</h2>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -639,7 +640,7 @@ const AutoServiceApp = () => {
   );
 
   const renderProfile = () => (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16 md:pb-0">  {/* Добавляем отступ снизу для мобильной навигации */}
       <h2 className="text-2xl font-bold text-white">Профиль пользователя</h2>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -749,19 +750,52 @@ const AutoServiceApp = () => {
     }
   };
 
+  // Добавляем эффект для управления отображением боковой панели на мобильных устройствах
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Функция для мобильного меню
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col">
       {/* Header */}
       <header className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
+              <button 
+                onClick={toggleMobileMenu}
+                className="md:hidden p-1 rounded-md text-gray-400 hover:text-white focus:outline-none"
+              >
+                {isMobileMenuOpen ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
+              </button>
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">
                 🚗
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">AutoService Pro</h1>
-                <p className="text-xs text-gray-400">Премиум автосервис</p>
+                <h1 className="text-xl font-bold text-white">AutoService</h1>
+                <p className="text-xs text-gray-400">Премиум-сервис</p>
               </div>
             </div>
             
@@ -778,14 +812,23 @@ const AutoServiceApp = () => {
         </div>
       </header>
 
-      <div className="flex h-[calc(100vh-4rem)]">
-        {/* Sidebar */}
-        <aside className="w-64 bg-gray-900/50 backdrop-blur-sm border-r border-gray-700/50 p-4">
+      <div className="flex flex-1 relative overflow-hidden">
+        {/* Sidebar для мобильных устройств (выдвигается) */}
+        <aside 
+          className={`absolute md:relative md:translate-x-0 w-64 bg-gray-900/95 md:bg-gray-900/50 backdrop-blur-sm border-r border-gray-700/50 p-4 h-full z-40 transition-transform duration-300 ease-in-out ${
+            isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
           <nav className="space-y-2">
             {Object.entries(pages).map(([key, label]) => (
               <button
                 key={key}
-                onClick={() => setCurrentPage(key)}
+                onClick={() => {
+                  setCurrentPage(key);
+                  if (window.innerWidth < 768) {
+                    setIsMobileMenuOpen(false);
+                  }
+                }}
                 className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
                   currentPage === key
                     ? 'bg-blue-600 text-white'
@@ -807,10 +850,44 @@ const AutoServiceApp = () => {
           </nav>
         </aside>
 
+        {/* Затемнение фона при открытом мобильном меню */}
+        {isMobileMenuOpen && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+
         {/* Main Content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-4 md:p-6">
           {renderPage()}
         </main>
+      </div>
+
+      {/* Мобильная нижняя навигация */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700/50 p-2 z-50">
+        <div className="flex justify-around">
+          {Object.entries(pages).slice(0, 5).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setCurrentPage(key)}
+              className={`flex flex-col items-center justify-center p-2 rounded-lg ${
+                currentPage === key ? 'text-blue-500' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <span className="text-xl">
+                {key === 'dashboard' ? '🏠' :
+                 key === 'vehicles' ? '🚗' :
+                 key === 'services' ? '🛠️' :
+                 key === 'maintenance' ? '🔧' :
+                 key === 'analytics' ? '📊' :
+                 key === 'booking' ? '📅' :
+                 key === 'profile' ? '👤' : '📋'}
+              </span>
+              <span className="text-xs mt-1">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
