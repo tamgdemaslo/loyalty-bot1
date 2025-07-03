@@ -191,20 +191,49 @@ async function registerMapping(tgId, agentId, phone, fullname) {
  * Создаёт нового агента
  * @param {string} fullName - Полное имя агента
  * @param {string} phone - Номер телефона
+ * @param {number} tgId - ID пользователя Telegram
  * @returns {Promise<string|null>} - ID нового агента или null в случае ошибки
  */
-async function createNewAgent(fullName, phone) {
+async function createNewAgent(fullName, phone, tgId) {
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
-      `INSERT INTO user_map (fullname, phone)
-       VALUES ($1, $2)
-       RETURNING agent_id`,
-      [fullName, phone]
+    await client.query('BEGIN');
+
+    // Генерируем уникальный agent_id в формате UUID
+    const agentIdResult = await client.query('SELECT uuid_generate_v4() as agent_id');
+    const agentId = agentIdResult.rows[0].agent_id;
+
+    // Создаем новую запись с указанным agent_id
+    await client.query(
+      `INSERT INTO user_map (agent_id, fullname, phone, tg_id)
+       VALUES ($1, $2, $3, $4)`,
+      [agentId, fullName, phone, tgId]
     );
-    return result.rows.length > 0 ? result.rows[0].agent_id : null;
+
+    // Создаем запись баланса
+    await client.query(
+      `INSERT INTO bonuses(agent_id, balance) VALUES($1, $2)
+       ON CONFLICT(agent_id) DO NOTHING`,
+      [agentId, 10000]
+    );
+
+    // Инициализация уровня лояльности
+    await client.query(
+      `INSERT INTO loyalty_levels(agent_id, level_id, total_spent, total_earned, total_redeemed)
+       VALUES ($1, 1, 0, 0, 0)
+       ON CONFLICT(agent_id) DO NOTHING`,
+      [agentId]
+    );
+
+    await client.query('COMMIT');
+    logger.info(`Создан новый агент: tg_id=${tgId}, agent_id=${agentId}`);
+    return agentId;
   } catch (error) {
+    await client.query('ROLLBACK');
     logger.error(`[createNewAgent] Ошибка создания нового агента: ${error.message}`);
     return null;
+  } finally {
+    client.release();
   }
 }
 
