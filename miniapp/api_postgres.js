@@ -201,8 +201,9 @@ async function createNewAgent(fullName, phone, tgId) {
 
     // Генерируем уникальный agent_id в формате UUID
     // Используем стандартную функцию PostgreSQL для генерации UUID
-    const agentIdResult = await client.query("SELECT md5(random()::text || clock_timestamp()::text)::uuid as agent_id");
-    const agentId = agentIdResult.rows[0].agent_id;
+    // Используем стандартный способ генерации UUID с помощью Node.js
+    const { v4: uuidv4 } = require('uuid');
+    const agentId = uuidv4();
 
     // Создаем новую запись с указанным agent_id
     await client.query(

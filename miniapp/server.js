@@ -362,7 +362,9 @@ app.post('/api/auth-phone', async (req, res) => {
         if (!user || !user.id) {
             console.log('⚠️ User ID not found in request. Using development fallback user');
             // Создаем тестового пользователя для локальной разработки
-            user = { id: 12345, first_name: 'DevUser', last_name: 'Local' };
+            // Генерируем разные ID для тестовых пользователей в зависимости от телефона
+            const testUserId = phone ? parseInt(phone.substring(phone.length - 5)) : 12345;
+            user = { id: testUserId, first_name: 'DevUser', last_name: 'Local' };
             console.log('👤 Using development fallback user:', user);
         }
         
