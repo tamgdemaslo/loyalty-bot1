@@ -603,5 +603,8 @@ module.exports = {
   getMaintenanceHistory,
   addMaintenanceRecord,
   getMaintenanceSettings,
-  updateMaintenanceSetting
+  updateMaintenanceSetting,
+  getRecentVisits,
+  getTransactions,
+  getMaintenanceData
 };
