@@ -381,7 +381,7 @@ app.post('/api/auth-phone', async (req, res) => {
             // Создаем нового контрагента в МойСклад
             console.log(`👤 Creating new agent for phone: ${phone}`);
             const fullName = user.first_name + (user.last_name ? ` ${user.last_name}` : '');
-            agentId = await loyaltyAPI.createNewAgent(fullName, phone);
+            agentId = await loyaltyAPI.createNewAgent(fullName, phone, user.id);
             
             if (!agentId) {
                 return res.status(500).json({
@@ -482,7 +482,7 @@ app.post('/api/register', async (req, res) => {
         
         if (!agentId) {
             // Создаем нового контрагента в МойСклад
-            agentId = await loyaltyAPI.createNewAgent(name, phone);
+            agentId = await loyaltyAPI.createNewAgent(name, phone, user.id);
         }
         
         // Создаем связь между Telegram ID и Agent ID
