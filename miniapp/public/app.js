@@ -175,11 +175,12 @@ class LoyaltyApp {
         const container = document.getElementById('recent-transactions');
         
         try {
-            if (!this.userData?.id) {
+            const userId = this.userLoyaltyData?.id || this.userData?.id;
+            if (!userId) {
                 throw new Error('User ID not available');
             }
             
-            const response = await fetch(`/api/transactions/${this.userData.id}`);
+            const response = await fetch(`/api/transactions/${userId}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -250,11 +251,12 @@ class LoyaltyApp {
         const container = document.getElementById('history-list');
         
         try {
-            if (!this.userData?.id) {
+            const userId = this.userLoyaltyData?.id || this.userData?.id;
+            if (!userId) {
                 throw new Error('User ID not available');
             }
             
-            const response = await fetch(`/api/visits/${this.userData.id}`);
+            const response = await fetch(`/api/visits/${userId}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -330,11 +332,12 @@ class LoyaltyApp {
         const container = document.getElementById('maintenance-overview');
         
         try {
-            if (!this.userData?.id) {
+            const userId = this.userLoyaltyData?.id || this.userData?.id;
+            if (!userId) {
                 throw new Error('User ID not available');
             }
             
-            const response = await fetch(`/api/maintenance/${this.userData.id}`);
+            const response = await fetch(`/api/maintenance/${userId}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -570,6 +573,8 @@ class LoyaltyApp {
             if (response.ok && result.success) {
                 // Сохраняем данные пользователя
                 this.userLoyaltyData = result.user;
+                // Также сохраняем userData для совместимости
+                this.userData = this.tg.initDataUnsafe?.user || { id: result.user.id };
                 
                 // Показываем уведомление
                 const message = result.user.isNewUser 
@@ -628,7 +633,7 @@ class LoyaltyApp {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        userId: this.userData?.id,
+                        userId: this.userLoyaltyData?.id || this.userData?.id,
                         amount: availableAmount,
                         description: `Списание ${availableAmount} бонусов через Mini App`
                     })
