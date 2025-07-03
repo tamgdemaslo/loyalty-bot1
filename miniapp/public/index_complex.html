@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loyalty WebApp</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="additional-styles.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+    <div id="app" class="container">
+        <!-- Экран авторизации -->
+        <div id="auth-screen" class="screen active">
+            <div class="auth-container">
+                <h1>Добро пожаловать!</h1>
+                <p>Введите номер телефона для входа</p>
+                <form id="phone-form">
+                    <div class="phone-input-group">
+                        <span class="phone-prefix">+7</span>
+                        <input type="tel" 
+                               id="phone-input" 
+                               placeholder="999 123 45 67" 
+                               maxlength="13" 
+                               required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Войти</button>
+                </form>
+                <div id="auth-error" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Главный экран -->
+        <div id="main-screen" class="screen">
+            <div class="header">
+                <h2 id="user-name">Загрузка...</h2>
+                <div id="balance-display" class="balance">
+                    <span class="balance-label">Баланс:</span>
+                    <span id="balance-amount">0</span> бонусов
+                </div>
+            </div>
+
+            <div class="main-menu">
+                <button class="menu-item" onclick="showScreen('balance-screen')">
+                    <span class="menu-icon">💰</span>
+                    <span class="menu-text">Мой баланс</span>
+                </button>
+                
+                <button class="menu-item" onclick="showScreen('visits-screen')">
+                    <span class="menu-icon">📊</span>
+                    <span class="menu-text">История посещений</span>
+                </button>
+                
+                <button class="menu-item" onclick="showScreen('transactions-screen')">
+                    <span class="menu-icon">💳</span>
+                    <span class="menu-text">История транзакций</span>
+                </button>
+                
+                <button class="menu-item" onclick="showScreen('achievements-screen')">
+                    <span class="menu-icon">🏆</span>
+                    <span class="menu-text">Достижения</span>
+                </button>
+                
+                <button class="menu-item" onclick="showScreen('about-screen')">
+                    <span class="menu-icon">ℹ️</span>
+                    <span class="menu-text">О программе</span>
+                </button>
+                
+                <button class="menu-item logout" onclick="logout()">
+                    <span class="menu-icon">🚪</span>
+                    <span class="menu-text">Выйти</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Экран баланса -->
+        <div id="balance-screen" class="screen">
+            <div class="screen-header">
+                <button class="back-btn" onclick="showScreen('main-screen')">← Назад</button>
+                <h2>Мой баланс</h2>
+            </div>
+            <div class="screen-content">
+                <div class="balance-card">
+                    <div class="balance-main">
+                        <span class="balance-value" id="detail-balance">0</span>
+                        <span class="balance-currency">бонусов</span>
+                    </div>
+                    <div class="balance-info">
+                        <p>Накопленные бонусы за все время</p>
+                    </div>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-value" id="total-visits">0</span>
+                        <span class="stat-label">Посещений</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="avg-check">0</span>
+                        <span class="stat-label">Средний чек</span>
+                    </div>
+                </div>
+                
+                <div class="bonus-rules">
+                    <h3>Правила начисления бонусов</h3>
+                    <ul>
+                        <li>1 бонус = 1 рубль</li>
+                        <li>Начисление: 5% от суммы покупки</li>
+                        <li>Списание: до 30% от суммы покупки</li>
+                        <li>Минимальная сумма для списания: 500 рублей</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран истории посещений -->
+        <div id="visits-screen" class="screen">
+            <div class="screen-header">
+                <button class="back-btn" onclick="showScreen('main-screen')">← Назад</button>
+                <h2>История посещений</h2>
+            </div>
+            <div class="screen-content">
+                <div id="visits-list" class="visits-list">
+                    <!-- Динамически загружаемый контент -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран истории транзакций -->
+        <div id="transactions-screen" class="screen">
+            <div class="screen-header">
+                <button class="back-btn" onclick="showScreen('main-screen')">← Назад</button>
+                <h2>История транзакций</h2>
+            </div>
+            <div class="screen-content">
+                <div class="transaction-filters">
+                    <button class="filter-btn active" onclick="filterTransactions('all')">Все</button>
+                    <button class="filter-btn" onclick="filterTransactions('earned')">Начисления</button>
+                    <button class="filter-btn" onclick="filterTransactions('spent')">Списания</button>
+                </div>
+                <div id="transactions-list" class="transactions-list">
+                    <!-- Динамически загружаемый контент -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран достижений -->
+        <div id="achievements-screen" class="screen">
+            <div class="screen-header">
+                <button class="back-btn" onclick="showScreen('main-screen')">← Назад</button>
+                <h2>Достижения</h2>
+            </div>
+            <div class="screen-content">
+                <div class="achievements-grid">
+                    <div class="achievement-card locked">
+                        <span class="achievement-icon">🌟</span>
+                        <h3>Новичок</h3>
+                        <p>Совершите первую покупку</p>
+                    </div>
+                    <div class="achievement-card locked">
+                        <span class="achievement-icon">🔥</span>
+                        <h3>Постоянный клиент</h3>
+                        <p>10 посещений</p>
+                    </div>
+                    <div class="achievement-card locked">
+                        <span class="achievement-icon">💎</span>
+                        <h3>VIP клиент</h3>
+                        <p>50 посещений</p>
+                    </div>
+                    <div class="achievement-card locked">
+                        <span class="achievement-icon">👑</span>
+                        <h3>Легенда</h3>
+                        <p>100 посещений</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран "О программе" -->
+        <div id="about-screen" class="screen">
+            <div class="screen-header">
+                <button class="back-btn" onclick="showScreen('main-screen')">← Назад</button>
+                <h2>О программе лояльности</h2>
+            </div>
+            <div class="screen-content">
+                <div class="about-content">
+                    <h3>Как это работает?</h3>
+                    <p>Наша программа лояльности позволяет вам накапливать бонусы с каждой покупки и использовать их для оплаты следующих заказов.</p>
+                    
+                    <h3>Преимущества программы:</h3>
+                    <ul>
+                        <li>Автоматическое начисление бонусов</li>
+                        <li>Прозрачная история всех операций</li>
+                        <li>Специальные предложения для постоянных клиентов</li>
+                        <li>Удобное отслеживание баланса</li>
+                    </ul>
+                    
+                    <h3>Контакты</h3>
+                    <p>По всем вопросам обращайтесь к администраторам или используйте чат-бот.</p>
+                    
+                    <div class="app-version">
+                        <p>Версия приложения: 1.0.0</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно загрузки -->
+    <div id="loading-modal" class="modal">
+        <div class="modal-content">
+            <div class="spinner"></div>
+            <p>Загрузка...</p>
+        </div>
+    </div>
+
+    <!-- Подключение скриптов -->
+    <script src="mobile-adapter.js"></script>
+    <script src="visit-manager.js"></script>
+    <script src="loyalty-manager.js"></script>
+    <script src="app.js?v=2.1.0"></script>
+    <script src="app-functions.js"></script>
+</body>
+</html>
