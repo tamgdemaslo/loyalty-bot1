@@ -92,10 +92,11 @@ class LoyaltyApp {
                 return;
             }
             
-            // Если пользователь уже авторизован (маловероятно)
-            this.userLoyaltyData = await response.json();
+            // Показываем главный экран и загружаем данные
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('auth-container').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
             this.updateUserInterface();
-            
         } catch (error) {
             console.error('Error loading user data:', error);
             
@@ -623,139 +624,11 @@ class LoyaltyApp {
                 this.tg.showAlert(message);
                 
                 // Переключаемся на главный экран
-                // Перестраиваем интерфейс
-                document.getElementById('loading').style.display = 'none';
+                document.getElementById('auth-container').style.display = 'none';
                 document.getElementById('main-app').style.display = 'block';
-                document.getElementById('main-app').innerHTML = `
-                    <div class="navbar">
-                        <div class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">
-                            <i class="fas fa-home"></i>
-                            <span>Главная</span>
-                        </div>
-                        <div class="nav-btn" data-page="history" onclick="showPage('history')">
-                            <i class="fas fa-history"></i>
-                            <span>История</span>
-                        </div>
-                        <div class="nav-btn" data-page="maintenance" onclick="showPage('maintenance')">
-                            <i class="fas fa-tools"></i>
-                            <span>ТО</span>
-                        </div>
-                        <div class="nav-btn" data-page="profile" onclick="showPage('profile')">
-                            <i class="fas fa-user"></i>
-                            <span>Профиль</span>
-                        </div>
-                    </div>
-                    
-                    <div class="pages">
-                        <div id="dashboard-page" class="page active">
-                            <div class="header">
-                                <div class="user-info">
-                                    <div id="user-name">${this.userLoyaltyData.name}</div>
-                                    <div id="user-status">Статус: ${this.userLoyaltyData.level}</div>
-                                </div>
-                                <div class="balance">
-                                    <div class="balance-label">Бонусы</div>
-                                    <div id="balance-amount">${this.formatMoney(this.userLoyaltyData.balance)}</div>
-                                </div>
-                            </div>
-                            
-                            <div class="loyalty-card">
-                                <div class="card-header">
-                                    <div id="level-badge" class="level-badge ${this.userLoyaltyData.level}">${this.userLoyaltyData.level}</div>
-                                    <div class="card-title">Карта лояльности</div>
-                                </div>
-                                <div class="progress-container">
-                                    <div id="progress-fill" class="progress-fill" style="width: 45%"></div>
-                                </div>
-                                <div class="loyalty-info">
-                                    <div>Потрачено: <span id="current-spent">${this.formatMoney(this.userLoyaltyData.totalSpent)}</span></div>
-                                    <div>Осталось <span id="next-level-requirement">до Silver: ₽45,000</span></div>
-                                </div>
-                            </div>
-                            
-                            <div class="quick-actions">
-                                <button class="action-btn" id="redeem-btn">
-                                    <i class="fas fa-gift"></i> Использовать бонусы
-                                </button>
-                                <button class="action-btn" id="analytics-btn">
-                                    <i class="fas fa-chart-line"></i> Аналитика
-                                </button>
-                            </div>
-                            
-                            <div class="section">
-                                <div class="section-header">
-                                    <h3>Последние операции</h3>
-                                    <a href="#" onclick="showPage('history')">Все</a>
-                                </div>
-                                <div id="recent-transactions" class="transactions-list">
-                                    <div class="loading-spinner">Загрузка...</div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="history-page" class="page">
-                            <h2>История визитов</h2>
-                            <div id="history-list" class="history-list">
-                                <div class="loading-spinner">Загрузка...</div>
-                            </div>
-                        </div>
-                        
-                        <div id="maintenance-page" class="page">
-                            <h2>Техническое обслуживание</h2>
-                            <div id="maintenance-overview" class="maintenance-overview">
-                                <div class="loading-spinner">Загрузка...</div>
-                            </div>
-                            <button class="btn-primary" id="add-maintenance-btn">
-                                <i class="fas fa-plus"></i> Добавить запись о ТО
-                            </button>
-                        </div>
-                        
-                        <div id="booking-page" class="page">
-                            <h2>Онлайн запись</h2>
-                            <div id="booking-content">
-                                <div class="loading-spinner">Загрузка...</div>
-                            </div>
-                        </div>
-                        
-                        <div id="profile-page" class="page">
-                            <h2>Профиль</h2>
-                            <div class="profile-info">
-                                <div class="profile-field">
-                                    <label>Имя:</label>
-                                    <div id="profile-name">${this.userLoyaltyData.name}</div>
-                                </div>
-                                <div class="profile-field">
-                                    <label>Телефон:</label>
-                                    <div id="profile-phone">${this.userLoyaltyData.phone}</div>
-                                </div>
-                                <div class="profile-field">
-                                    <label>Дата регистрации:</label>
-                                    <div id="profile-registered">${this.formatDate(this.userLoyaltyData.registeredDate)}</div>
-                                </div>
-                            </div>
-                            
-                            <h3>Статистика</h3>
-                            <div class="stats-container">
-                                <div class="stat-item">
-                                    <div class="stat-value" id="total-visits">${this.userLoyaltyData.totalVisits}</div>
-                                    <div class="stat-label">Визитов</div>
-                                </div>
-                                <div class="stat-item">
-                                    <div class="stat-value" id="total-spent">${this.formatMoney(this.userLoyaltyData.totalSpent)}</div>
-                                    <div class="stat-label">Потрачено</div>
-                                </div>
-                                <div class="stat-item">
-                                    <div class="stat-value" id="total-earned">${this.formatMoney(this.userLoyaltyData.totalEarned)}</div>
-                                    <div class="stat-label">Начислено</div>
-                                </div>
-                                <div class="stat-item">
-                                    <div class="stat-value" id="total-redeemed">${this.formatMoney(this.userLoyaltyData.totalRedeemed)}</div>
-                                    <div class="stat-label">Списано</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+                
+                // Перестраиваем интерфейс
+                this.updateUserInterface();
                 
                 // Устанавливаем обработчики событий
                 this.setupEventListeners();
