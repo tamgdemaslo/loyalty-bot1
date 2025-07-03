@@ -503,8 +503,12 @@ class LoyaltyApp {
                 <div id="phone-auth-form" style="max-width: 300px; margin: 0 auto;">
                     <div style="margin-bottom: 24px; text-align: left;">
                         <label style="display: block; margin-bottom: 8px; font-weight: 500;">Номер телефона:</label>
-                        <input type="tel" id="user-phone-input" placeholder="+7 123 456-78-90" 
-                               style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                        <div style="display: flex; align-items: center; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+                            <span style="padding: 12px; background: #f0f0f0; border-right: 1px solid #ddd; font-weight: 500;">+7</span>
+                            <input type="tel" id="user-phone-input" placeholder="999 255 60 31" 
+                                   maxlength="13"
+                                   style="flex: 1; padding: 12px; border: none; outline: none;">
+                        </div>
                     </div>
                     
                     <button class="btn-primary" onclick="loyaltyApp.authorizeByPhone()" style="width: 100%; margin-bottom: 16px;">
@@ -530,6 +534,36 @@ class LoyaltyApp {
             </div>
         `;
         document.getElementById('main-app').style.display = 'block';
+        
+        // Добавляем форматирование номера телефона
+        setTimeout(() => {
+            const phoneInput = document.getElementById('user-phone-input');
+            if (phoneInput) {
+                phoneInput.addEventListener('input', (e) => {
+                    let value = e.target.value.replace(/\D/g, '');
+                    
+                    // Ограничиваем до 10 цифр
+                    if (value.length > 10) value = value.slice(0, 10);
+                    
+                    // Форматируем как XXX XXX XX XX
+                    let formattedValue = '';
+                    if (value.length > 0) {
+                        formattedValue = value.slice(0, 3);
+                        if (value.length > 3) {
+                            formattedValue += ' ' + value.slice(3, 6);
+                        }
+                        if (value.length > 6) {
+                            formattedValue += ' ' + value.slice(6, 8);
+                        }
+                        if (value.length > 8) {
+                            formattedValue += ' ' + value.slice(8, 10);
+                        }
+                    }
+                    
+                    e.target.value = formattedValue;
+                });
+            }
+        }, 100);
     }
     
     showRegistrationForm() {
@@ -538,19 +572,24 @@ class LoyaltyApp {
     }
     
     async authorizeByPhone() {
-        const phone = document.getElementById('user-phone-input').value.trim();
+        const phoneValue = document.getElementById('user-phone-input').value.trim();
         
-        if (!phone) {
+        if (!phoneValue) {
             this.tg.showAlert('Пожалуйста, введите номер телефона');
             return;
         }
         
-        // Простая валидация телефона
-        const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-        if (!phoneRegex.test(phone.replace(/[\s-]/g, ''))) {
-            this.tg.showAlert('Пожалуйста, введите корректный номер телефона');
+        // Убираем все нецифровые символы
+        const phoneDigits = phoneValue.replace(/\D/g, '');
+        
+        // Проверяем длину (должно быть 10 цифр)
+        if (phoneDigits.length !== 10) {
+            this.tg.showAlert('Введите номер телефона в формате: 999 255 60 31 (10 цифр)');
             return;
         }
+        
+        // Добавляем префикс +7
+        const fullPhone = '+7' + phoneDigits;
         
         try {
             document.getElementById('phone-auth-form').style.display = 'none';
@@ -563,7 +602,7 @@ class LoyaltyApp {
                 },
                 body: JSON.stringify({
                     initData: this.tg.initData || '',
-                    phone: phone.replace(/[\s-]/g, ''),
+                    phone: fullPhone,
                     user: this.tg.initDataUnsafe?.user || null
                 })
             });
