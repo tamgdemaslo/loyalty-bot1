@@ -314,7 +314,7 @@ app.post('/api/redeem', async (req, res) => {
         );
         
         // Обновляем баланс через API
-        await loyaltyAPI.updateBalance(agentId, -amountInKopecks);
+        await loyaltyAPI.changeBalance(agentId, -amountInKopecks);
         
         const newBalance = await loyaltyAPI.getBalance(agentId);
         
@@ -394,7 +394,7 @@ app.post('/api/auth-phone', async (req, res) => {
         console.log(`✅ Agent found/created: ${agentId}`);
         
         // Создаем связь между Telegram ID и Agent ID
-        await loyaltyAPI.registerUserMapping(
+        await loyaltyAPI.registerMapping(
             user.id, 
             agentId, 
             phone, 
@@ -486,7 +486,7 @@ app.post('/api/register', async (req, res) => {
         }
         
         // Создаем связь между Telegram ID и Agent ID
-        await loyaltyAPI.registerUserMapping(user.id, agentId, phone, name);
+        await loyaltyAPI.registerMapping(user.id, agentId, phone, name);
         
         // Начисляем приветственные бонусы
         await loyaltyAPI.addBonusTransaction(
@@ -664,7 +664,7 @@ app.post('/api/create-test-user', async (req, res) => {
         const testPhone = '+79992556031';
         const testName = 'Илья | Там где масло ⛽️';
         
-        await loyaltyAPI.registerUserMapping(testUserId, testAgentId, testPhone, testName);
+        await loyaltyAPI.registerMapping(testUserId, testAgentId, testPhone, testName);
         
         res.json({
             success: true,

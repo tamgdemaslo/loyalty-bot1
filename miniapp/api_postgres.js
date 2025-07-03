@@ -187,6 +187,27 @@ async function registerMapping(tgId, agentId, phone, fullname) {
  * @param {string} phone - Номер телефона
  * @returns {Promise<string|null>} - ID агента или null, если не найден
  */
+/**
+ * Создаёт нового агента
+ * @param {string} fullName - Полное имя агента
+ * @param {string} phone - Номер телефона
+ * @returns {Promise<string|null>} - ID нового агента или null в случае ошибки
+ */
+async function createNewAgent(fullName, phone) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO user_map (fullname, phone)
+       VALUES ($1, $2)
+       RETURNING agent_id`,
+      [fullName, phone]
+    );
+    return result.rows.length > 0 ? result.rows[0].agent_id : null;
+  } catch (error) {
+    logger.error(`[createNewAgent] Ошибка создания нового агента: ${error.message}`);
+    return null;
+  }
+}
+
 async function findAgentByPhone(phone) {
   try {
     const result = await pool.query(
@@ -501,12 +522,76 @@ async function updateMaintenanceSetting(agentId, workId, settings) {
   }
 }
 
+/**
+ * Получает последние посещения
+ * @param {string} agentId - ID агента
+ * @param {number} limit - Максимальное количество записей
+ * @returns {Promise<Array>} - Массив посещений
+ */
+async function getRecentVisits(agentId, limit = 30) {
+  try {
+    const result = await pool.query(`
+      SELECT id, name, sum, moment, bonus_earned as "bonusEarned"
+      FROM visits
+      WHERE agent_id = $1
+      ORDER BY moment DESC
+      LIMIT $2
+    `, [agentId, limit]);
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      sum: parseInt(row.sum || 0),
+      moment: row.moment,
+      bonusEarned: parseInt(row.bonusEarned || 0),
+      services: [],  // Плейсхолдер для услуг
+      car: {}        // Плейсхолдер для данных автомобиля
+    }));
+  } catch (error) {
+    logger.error(`[getRecentVisits] Ошибка получения посещений: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Получает последние транзакции
+ * @param {string} agentId - ID агента
+ * @param {number} limit - Максимальное количество записей
+ * @returns {Promise<Array>} - Массив транзакций
+ */
+async function getTransactions(agentId, limit = 30) {
+  try {
+    const result = await pool.query(`
+      SELECT transaction_type, amount, description, related_demand_id, created_at
+      FROM bonus_transactions
+      WHERE agent_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `, [agentId, limit]);
+    
+    return result.rows;
+  } catch (error) {
+    logger.error(`[getTransactions] Ошибка получения транзакций: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Получает данные о ТО
+ * @param {string} agentId - ID агента
+ * @returns {Promise<Array>} - Массив записей о ТО
+ */
+async function getMaintenanceData(agentId) {
+  return await getMaintenanceHistory(agentId);
+}
+
 // Экспорт функций для использования в других модулях
 module.exports = {
   getAgentId,
   getUserByPhone,
   getUserByTgId,
   findAgentByPhone,
+  createNewAgent,
   registerMapping,
   getBalance,
   changeBalance,
