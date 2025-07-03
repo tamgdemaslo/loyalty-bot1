@@ -183,6 +183,24 @@ async function registerMapping(tgId, agentId, phone, fullname) {
  * @returns {Promise<number>} - Текущий баланс бонусов
  */
 /**
+ * Находит агента по номеру телефона
+ * @param {string} phone - Номер телефона
+ * @returns {Promise<string|null>} - ID агента или null, если не найден
+ */
+async function findAgentByPhone(phone) {
+  try {
+    const result = await pool.query(
+      'SELECT agent_id FROM user_map WHERE phone = $1',
+      [phone]
+    );
+    return result.rows.length > 0 ? result.rows[0].agent_id : null;
+  } catch (error) {
+    logger.error(`[findAgentByPhone] Ошибка поиска агента: ${error.message}`);
+    return null;
+  }
+}
+
+/**
  * Получает контактную информацию пользователя по Telegram ID
  * @param {number} tgId - ID пользователя Telegram
  * @returns {Promise<Object>} - Объект с контактной информацией
@@ -488,6 +506,7 @@ module.exports = {
   getAgentId,
   getUserByPhone,
   getUserByTgId,
+  findAgentByPhone,
   registerMapping,
   getBalance,
   changeBalance,
