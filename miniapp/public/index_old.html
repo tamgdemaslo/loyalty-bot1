@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoService - Система лояльности</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="loyalty-manager.js"></script>
+    <script src="visit-manager.js"></script>
+    <script src="mobile-adapter.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        
+        .gradient-gold { background: linear-gradient(135deg, #FFD700, #FFA500); }
+        .gradient-silver { background: linear-gradient(135deg, #C0C0C0, #808080); }
+        .gradient-bronze { background: linear-gradient(135deg, #CD7F32, #B8860B); }
+        .gradient-platinum { background: linear-gradient(135deg, #E5E4E2, #C0C0C0); }
+        .gradient-diamond { background: linear-gradient(135deg, #B9F2FF, #1E90FF); }
+        
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        
+        .btn-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            max-width: 80%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            animation: toastIn 0.3s, toastOut 0.3s 2.7s;
+        }
+
+        @keyframes toastIn {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes toastOut {
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(-20px); opacity: 0; }
+        }
+        
+        /* Mobile optimizations */
+        .mobile-view .touch-friendly {
+            min-height: 48px;
+            min-width: 48px;
+        }
+        
+        .mobile-view .mobile-input {
+            font-size: 16px;  /* Prevents iOS zoom on focus */
+            min-height: 48px;
+            padding: 12px;
+        }
+        
+        .mobile-view .mobile-h1 {
+            font-size: 1.5rem;
+        }
+        
+        .mobile-view .mobile-heading {
+            font-size: 1.25rem;
+        }
+        
+        .swipe-indicator {
+            position: fixed;
+            bottom: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+        
+        .swipe-indicator.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div id="app" class="min-h-screen">
+        <!-- Loading Screen -->
+        <div id="loading" class="fixed inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center z-50 transition-opacity duration-500">
+            <div class="animate-pulse">
+                <div class="text-center text-white">
+                    <div class="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/20 glass-effect flex items-center justify-center text-3xl animate-pulse">
+                        🚗
+                    </div>
+                    <h1 class="text-2xl font-bold mb-2">AutoService</h1>
+                    <p class="text-indigo-200">Загружаем ваши данные...</p>
+                    <div class="mt-4 w-32 h-1 bg-white/20 rounded-full mx-auto overflow-hidden">
+                        <div class="h-full bg-white rounded-full animate-pulse"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Header -->
+        <header id="mobile-header" class="lg:hidden bg-white border-b border-gray-200 sticky top-0 z-40 hidden shadow-sm">
+            <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600"></div>
+            <div class="flex items-center justify-between p-4">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">
+                        🚗
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold text-gray-900">AutoService</h1>
+                        <p class="text-xs text-gray-500">Премиум-сервис</p>
+                    </div>
+                </div>
+                
+                <button id="mobile-menu-btn" class="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+                    <span class="text-xl">☰</span>
+                </button>
+            </div>
+            
+            <!-- Mobile Menu -->
+            <div id="mobile-menu" class="hidden absolute top-full left-0 right-0 bg-white border-b border-gray-200 p-4 shadow-lg z-50">
+                <div class="grid grid-cols-5 gap-2" id="mobile-nav-items">
+                    <!-- Navigation items will be inserted here -->
+                </div>
+            </div>
+        </header>
+
+        <div class="flex h-screen lg:h-auto">
+            <!-- Desktop Sidebar -->
+            <aside id="desktop-sidebar" class="hidden lg:flex lg:flex-col w-64 bg-white border-r border-gray-200 p-6">
+                <div class="flex items-center space-x-3 mb-8">
+                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">
+                        🚗
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">AutoService</h1>
+                        <p class="text-sm text-gray-500">Премиум-сервис</p>
+                    </div>
+                </div>
+                
+                <nav class="space-y-2 flex-1" id="desktop-nav">
+                    <!-- Navigation items will be inserted here -->
+                </nav>
+                
+                <div class="border-t border-gray-200 pt-4">
+                    <div class="flex items-center space-x-3">
+                        <div id="user-avatar" class="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-white text-sm font-bold">
+                            U
+                        </div>
+                        <div class="flex-1">
+                            <p id="sidebar-user-name" class="text-sm font-medium text-gray-900">Пользователь</p>
+                            <p id="sidebar-user-balance" class="text-xs text-gray-500">0 ₽</p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="flex-1 p-4 lg:p-8 overflow-auto hide-scrollbar">
+                <div class="max-w-7xl mx-auto relative">
+                    <!-- Dashboard Page -->
+                    <div id="page-dashboard" class="page-content space-y-6">
+                        <!-- Welcome Section -->
+                        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 p-6 md:p-8">
+                            <div class="absolute inset-0">
+                                <div class="absolute top-4 right-4 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+                                <div class="absolute bottom-4 left-4 w-24 h-24 bg-white/5 rounded-full blur-xl"></div>
+                            </div>
+                            <div class="relative z-10">
+                                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <h1 id="welcome-text" class="text-2xl md:text-3xl font-bold text-white mb-1">
+                                            Привет, Пользователь! 👋
+                                        </h1>
+                                        <p class="text-indigo-100 opacity-90">
+                                            Ваш премиум автосервис всегда готов помочь
+                                        </p>
+                                    </div>
+                                    <div class="glass-effect rounded-2xl p-4 text-center">
+                                        <div id="bonus-display" class="text-2xl md:text-3xl font-bold text-white">
+                                            0 ₽
+                                        </div>
+                                        <div class="text-indigo-100 text-sm">Бонусы</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Stats -->
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="quick-stats">
+                            <!-- Stats cards will be inserted here -->
+                        </div>
+
+                        <!-- Analytics & Services -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Chart -->
+                            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 btn-hover">
+                                <h3 class="text-lg font-bold text-gray-900 mb-4">Активность за последние месяцы</h3>
+                                <div class="h-48">
+                                    <canvas id="analyticsChart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- Recent Transactions -->
+                            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 btn-hover">
+                                <h3 class="text-lg font-bold text-gray-900 mb-4">Последние операции</h3>
+                                <div id="recent-transactions" class="space-y-3">
+                                    <!-- Transactions will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <button class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 btn-hover text-center group" onclick="showPage('booking')">
+                                <div class="w-12 h-12 mx-auto mb-3 rounded-xl bg-blue-100 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                    📅
+                                </div>
+                                <p class="text-gray-900 font-medium">Записаться</p>
+                            </button>
+                            
+                            <button class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 btn-hover text-center group" onclick="showPage('visits')">
+                                <div class="w-12 h-12 mx-auto mb-3 rounded-xl bg-green-100 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                    📋
+                                </div>
+                                <p class="text-gray-900 font-medium">История</p>
+                            </button>
+                            
+                            <button class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 btn-hover text-center group" onclick="showPage('maintenance')">
+                                <div class="w-12 h-12 mx-auto mb-3 rounded-xl bg-yellow-100 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                    🔧
+                                </div>
+                                <p class="text-gray-900 font-medium">ТО</p>
+                            </button>
+                            
+                            <button class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 btn-hover text-center group" onclick="redeemBonuses()">
+                                <div class="w-12 h-12 mx-auto mb-3 rounded-xl bg-purple-100 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                    💎
+                                </div>
+                                <p class="text-gray-900 font-medium">Списать</p>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Visits Page -->
+                    <div id="page-visits" class="page-content space-y-6 hidden">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-bold text-gray-900">История посещений</h2>
+                            <button onclick="showPage('dashboard')" class="text-indigo-600 hover:text-indigo-700 font-medium">
+                                ← Назад
+                            </button>
+                        </div>
+                        <div id="visits-list" class="space-y-4">
+                            <!-- Visits will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Transactions Page -->
+                    <div id="page-transactions" class="page-content space-y-6 hidden">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-bold text-gray-900">История транзакций</h2>
+                            <button onclick="showPage('dashboard')" class="text-indigo-600 hover:text-indigo-700 font-medium">
+                                ← Назад
+                            </button>
+                        </div>
+                        <div id="transactions-list" class="space-y-4">
+                            <!-- Transactions will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Maintenance Page -->
+                    <div id="page-maintenance" class="page-content space-y-6 hidden">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-bold text-gray-900">Техническое обслуживание</h2>
+                            <button onclick="showPage('dashboard')" class="text-indigo-600 hover:text-indigo-700 font-medium">
+                                ← Назад
+                            </button>
+                        </div>
+                        
+                        <!-- Cars Section -->
+                        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-bold text-gray-900">Мои автомобили</h3>
+                                <button id="add-car-btn" class="text-indigo-600 hover:text-indigo-700 font-medium text-sm flex items-center">
+                                    <span class="mr-1">+</span> Добавить
+                                </button>
+                            </div>
+                            <div id="cars-list" class="space-y-4">
+                                <!-- Cars will be inserted here -->
+                            </div>
+                        </div>
+                        
+                        <!-- Maintenance Records -->
+                        <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-lg font-bold text-gray-900">График ТО</h3>
+                                <button id="add-maintenance-btn" class="text-indigo-600 hover:text-indigo-700 font-medium text-sm flex items-center">
+                                    <span class="mr-1">+</span> Добавить запись
+                                </button>
+                            </div>
+                            <div id="maintenance-list" class="space-y-4">
+                                <!-- Maintenance records will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Booking Page -->
+                    <div id="page-booking" class="page-content space-y-6 hidden">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-bold text-gray-900">Онлайн запись</h2>
+                            <button onclick="showPage('dashboard')" class="text-indigo-600 hover:text-indigo-700 font-medium">
+                                ← Назад
+                            </button>
+                        </div>
+                        <div id="booking-content">
+                            <!-- Booking wizard will be inserted here -->
+                        </div>
+                    </div>
+
+                    <!-- Profile Page -->
+                    <div id="page-profile" class="page-content space-y-6 hidden">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-2xl font-bold text-gray-900">Профиль</h2>
+                            <button onclick="showPage('dashboard')" class="text-indigo-600 hover:text-indigo-700 font-medium">
+                                ← Назад
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div class="lg:col-span-2 space-y-6">
+                                <!-- Profile Info -->
+                                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                                    <h3 class="text-lg font-bold text-gray-900 mb-4">Личная информация</h3>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-medium mb-2">Полное имя</label>
+                                            <input id="profile-name" type="text" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-medium mb-2">Телефон</label>
+                                            <input id="profile-phone" type="text" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none transition-colors">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-medium mb-2">Telegram ID</label>
+                                            <input id="profile-telegram-id" type="text" readonly class="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-600">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="space-y-6">
+                                <!-- Loyalty Card -->
+                                <div id="loyalty-card" class="bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 rounded-2xl p-6 text-white">
+                                    <div class="text-center">
+                                        <div class="w-16 h-16 mx-auto mb-4 rounded-full glass-effect flex items-center justify-center text-2xl">
+                                            👑
+                                        </div>
+                                        <h4 id="loyalty-level-name" class="text-xl font-bold mb-2">
+                                            Бронза
+                                        </h4>
+                                        <p id="loyalty-level-benefits" class="text-indigo-100 mb-4 text-sm">
+                                            5% кэшбэк • до 30% скидка
+                                        </p>
+                                        <div class="w-full bg-white/20 rounded-full h-2 mb-2">
+                                            <div id="loyalty-progress" class="bg-white h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                        </div>
+                                        <p id="loyalty-progress-text" class="text-xs text-indigo-100">
+                                            Загрузка...
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Mobile Bottom Navigation -->
+        <nav id="mobile-bottom-nav" class="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 hidden z-40 shadow-lg">
+            <div class="flex justify-around" id="bottom-nav-items">
+                <!-- Navigation items will be inserted here -->
+            </div>
+        </nav>
+
+        <!-- Redeem Modal -->
+        <div id="redeem-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-md">
+                <h3 class="text-xl font-bold text-gray-900 mb-4">Списание бонусов</h3>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-medium mb-2">Сумма к списанию</label>
+                    <input id="redeem-amount" type="number" placeholder="Введите сумму" class="w-full p-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none">
+                    <p class="text-xs text-gray-500 mt-1">Доступно: <span id="available-balance">0</span> ₽</p>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-medium mb-2">Описание (необязательно)</label>
+                    <input id="redeem-description" type="text" placeholder="Например: оплата услуги" class="w-full p-3 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none">
+                </div>
+                
+                <div class="flex space-x-3">
+                    <button onclick="closeRedeemModal()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-medium transition-colors">
+                        Отмена
+                    </button>
+                    <button onclick="confirmRedeem()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-medium transition-colors">
+                        Списать
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2">
+            <!-- Toast messages will be inserted here -->
+        </div>
+        
+        <!-- Swipe Indicator -->
+        <div id="swipe-indicator" class="swipe-indicator">Свайп для навигации</div>
+    </div>
+
+    <script type="text/javascript">
+        // Global variables
+        let currentPage = 'dashboard';
+        let userData = null;
+
+        // Initialize Telegram WebApp
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
+        
+        // Setup bypass for localtunnel password page
+        if (window.location.hostname.includes('loca.lt')) {
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                if (args[1]) {
+                    args[1].headers = {
+                        ...args[1].headers,
+                        'bypass-tunnel-reminder': 'true',
+                        'User-Agent': 'TelegramWebApp/1.0'
+                    };
+                } else {
+                    args[1] = {
+                        headers: {
+                            'bypass-tunnel-reminder': 'true',
+                            'User-Agent': 'TelegramWebApp/1.0'
+                        }
+                    };
+                }
+                return originalFetch.apply(this, args);
+            };
+        }
+
+        // Navigation data
+        const pages = {
+            dashboard: { name: 'Главная', icon: '🏠' },
+            visits: { name: 'Посещения', icon: '📋' },
+            transactions: { name: 'Операции', icon: '💰' },
+            maintenance: { name: 'ТО', icon: '🔧' },
+            booking: { name: 'Запись', icon: '📅' },
+            profile: { name: 'Профиль', icon: '👤' }
+        };
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            setupNavigation();
+            loadUserData();
+            initializeView();
+        });
+
+        // Initialize view based on device
+        function initializeView() {
+            const isMobile = window.innerWidth < 768;
+            
+            if (isMobile) {
+                document.getElementById('mobile-header').classList.remove('hidden');
+                document.getElementById('mobile-bottom-nav').classList.remove('hidden');
+                document.getElementById('desktop-sidebar').classList.add('hidden');
+                
+                // Show swipe indicator after a delay
+                setTimeout(() => {
+                    const indicator = document.getElementById('swipe-indicator');
+                    indicator.classList.add('show');
+                    setTimeout(() => indicator.classList.remove('show'), 3000);
+                }, 5000);
+            } else {
+                document.getElementById('mobile-header').classList.add('hidden');
+                document.getElementById('mobile-bottom-nav').classList.add('hidden');
+                document.getElementById('desktop-sidebar').classList.remove('hidden');
+            }
+        }
+
+        // Setup navigation
+        function setupNavigation() {
+            const desktopNav = document.getElementById('desktop-nav');
+            const mobileNavItems = document.getElementById('mobile-nav-items');
+            const bottomNavItems = document.getElementById('bottom-nav-items');
+
+            Object.entries(pages).forEach(([key, page]) => {
+                // Desktop navigation
+                const desktopBtn = document.createElement('button');
+                desktopBtn.className = `w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-colors font-medium text-gray-600 hover:bg-gray-100`;
+                desktopBtn.innerHTML = `<span class="text-xl">${page.icon}</span><span>${page.name}</span>`;
+                desktopBtn.onclick = () => showPage(key);
+                desktopNav.appendChild(desktopBtn);
+
+                // Mobile navigation
+                const mobileBtn = document.createElement('button');
+                mobileBtn.className = `flex flex-col items-center space-y-1 p-3 rounded-xl transition-colors text-gray-600 hover:bg-gray-100`;
+                mobileBtn.innerHTML = `<span class="text-xl">${page.icon}</span><span class="text-xs font-medium">${page.name}</span>`;
+                mobileBtn.onclick = () => {
+                    showPage(key);
+                    toggleMobileMenu(false);
+                };
+                mobileNavItems.appendChild(mobileBtn);
+
+                // Bottom navigation
+                const bottomBtn = document.createElement('button');
+                bottomBtn.className = `flex flex-col items-center space-y-1 p-2 rounded-xl transition-colors text-gray-500`;
+                bottomBtn.innerHTML = `<span class="text-xl">${page.icon}</span><span class="text-xs font-medium">${page.name}</span>`;
+                bottomBtn.setAttribute('data-page', key);
+                bottomBtn.onclick = () => showPage(key);
+                bottomNavItems.appendChild(bottomBtn);
+            });
+
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-btn').onclick = () => {
+                const menu = document.getElementById('mobile-menu');
+                toggleMobileMenu(!menu.classList.contains('hidden'));
+            };
+        }
+
+        // Toggle mobile menu
+        function toggleMobileMenu(show) {
+            const menu = document.getElementById('mobile-menu');
+            const btn = document.getElementById('mobile-menu-btn');
+            
+            if (show) {
+                menu.classList.remove('hidden');
+                btn.innerHTML = '<span class="text-xl">✕</span>';
+            } else {
+                menu.classList.add('hidden');
+                btn.innerHTML = '<span class="text-xl">☰</span>';
+            }
+        }
+
+        // Show page
+        function showPage(pageName) {
+            // Hide all pages
+            document.querySelectorAll('.page-content').forEach(page => {
+                page.classList.add('hidden');
+            });
+            
+            // Show selected page
+            const page = document.getElementById(`page-${pageName}`);
+            if (page) {
+                page.classList.remove('hidden');
+                page.classList.add('fade-in');
+            }
+            
+            // Update active state in navigation
+            updateNavigation(pageName);
+            
+            // Update current page
+            currentPage = pageName;
+            window.currentPage = pageName;
+            
+            // Update Telegram BackButton
+            if (window.Telegram && window.Telegram.WebApp) {
+                if (pageName !== 'dashboard') {
+                    window.Telegram.WebApp.BackButton.show();
+                } else {
+                    window.Telegram.WebApp.BackButton.hide();
+                }
+            }
+            
+            // Special logic for specific pages
+            if (pageName === 'visits') {
+                loadVisitHistory();
+            } else if (pageName === 'transactions') {
+                loadTransactions();
+            } else if (pageName === 'maintenance') {
+                loadMaintenanceData();
+            } else if (pageName === 'booking') {
+                initBookingWizard();
+            } else if (pageName === 'profile') {
+                loadProfileData();
+            }
+        }
+
+        // Update navigation active state
+        function updateNavigation(pageName) {
+            // Desktop nav
+            document.querySelectorAll('#desktop-nav button').forEach((btn, index) => {
+                if (index === Object.keys(pages).indexOf(pageName)) {
+                    btn.classList.add('bg-indigo-50', 'text-indigo-600');
+                } else {
+                    btn.classList.remove('bg-indigo-50', 'text-indigo-600');
+                }
+            });
+            
+            // Bottom nav
+            document.querySelectorAll('#bottom-nav-items button').forEach(btn => {
+                if (btn.getAttribute('data-page') === pageName) {
+                    btn.classList.add('text-indigo-600');
+                } else {
+                    btn.classList.remove('text-indigo-600');
+                }
+            });
+        }
+
+        // Load user data
+        async function loadUserData() {
+            try {
+                // Get user data from Telegram WebApp
+                const telegramUser = window.Telegram?.WebApp?.initDataUnsafe?.user || { id: 12345, first_name: 'Тестовый' };
+                
+                // Try to fetch user loyalty data
+                const response = await fetch('/api/user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        initData: window.Telegram?.WebApp?.initData || '',
+                        user: telegramUser
+                    })
+                });
+                
+                // Handle response
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    if (errorData.requiresPhoneAuth) {
+                        showPhoneAuthForm(errorData.firstName || telegramUser.first_name || 'пользователь');
+                        return;
+                    }
+                    throw new Error('Failed to load user data');
+                }
+                
+                // Process user data
+                userData = await response.json();
+                
+                // Initialize other components with user data
+                if (window.loyaltyManager) window.loyaltyManager.init(userData);
+                if (window.visitManager) window.visitManager.init(userData.id);
+                
+                // Show main interface
+                document.getElementById('loading').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('loading').style.display = 'none';
+                }, 500);
+                
+                // Update UI with user data
+                updateUserInterface();
+                
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                
+                // Show phone auth form as fallback
+                const telegramUser = window.Telegram?.WebApp?.initDataUnsafe?.user || { first_name: 'пользователь' };
+                showPhoneAuthForm(telegramUser.first_name || 'пользователь');
+            }
+        }
+
+        // Update user interface with data
+        function updateUserInterface() {
+            if (!userData) return;
+            
+            // Update welcome section
+            document.getElementById('welcome-text').textContent = `Привет, ${userData.name.split(' ')[0]}! 👋`;
+            document.getElementById('bonus-display').textContent = formatMoney(userData.balance);
+            
+            // Update user info in sidebar
+            document.getElementById('sidebar-user-name').textContent = userData.name;
+            document.getElementById('sidebar-user-balance').textContent = formatMoney(userData.balance);
+            
+            const initials = userData.name.split(' ').map(n => n[0]).join('').toUpperCase();
+            document.getElementById('user-avatar').textContent = initials;
+            
+            // Update loyalty card in profile
+            document.getElementById('loyalty-level-name').textContent = userData.level;
+            
+            const levelData = window.loyaltyManager?.userStats;
+            if (levelData) {
+                document.getElementById('loyalty-level-benefits').textContent = window.loyaltyManager.getDiscountInfo();
+                document.getElementById('loyalty-progress').style.width = `${levelData.progress}%`;
+                
+                if (levelData.nextLevel) {
+                    document.getElementById('loyalty-progress-text').textContent = 
+                        `До ${levelData.nextLevel.name}: ${formatMoney(levelData.needed)}`;
+                } else {
+                    document.getElementById('loyalty-progress-text').textContent = 'Максимальный уровень';
+                }
+            }
+            
+            // Update quick stats
+            const statsContainer = document.getElementById('quick-stats');
+            statsContainer.innerHTML = '';
+            
+            const stats = [
+                { name: 'Посещения', value: userData.totalVisits, icon: '📋' },
+                { name: 'Средний чек', value: formatMoney(userData.averageCheck), icon: '💵' },
+                { name: 'Потрачено', value: formatMoney(userData.totalSpent), icon: '💸' },
+                { name: 'Начислено', value: formatMoney(userData.totalEarned), icon: '💰' }
+            ];
+            
+            stats.forEach(stat => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-2xl p-4 shadow-sm border border-gray-100 btn-hover';
+                card.innerHTML = `
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-xl mr-3">
+                            ${stat.icon}
+                        </div>
+                        <div>
+                            <div class="font-medium text-gray-900">${stat.value}</div>
+                            <div class="text-xs text-gray-500">${stat.name}</div>
+                        </div>
+                    </div>
+                `;
+                statsContainer.appendChild(card);
+            });
+            
+            // Initialize chart
+            initAnalyticsChart();
+            
+            // Load transactions and visits
+            loadRecentTransactions();
+            loadVisitHistory();
+        }
+
+        // Show phone authentication form
+        function showPhoneAuthForm(firstName) {
+            document.getElementById('loading').style.display = 'none';
+            
+            const container = document.createElement('div');
+            container.className = 'fixed inset-0 bg-white z-50 p-6 flex flex-col items-center justify-center text-center';
+            
+            container.innerHTML = `
+                <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-indigo-100 flex items-center justify-center text-3xl">
+                    📱
+                </div>
+                <h2 class="text-2xl font-bold mb-4">Авторизация</h2>
+                <p class="text-gray-600 mb-8">
+                    Добро пожаловать, ${firstName}!<br>
+                    Для доступа к системе лояльности введите номер телефона:
+                </p>
+                
+                <div class="w-full max-w-sm">
+                    <input type="tel" id="phone-input" placeholder="+7 (___) ___-__-__" 
+                           class="w-full p-4 text-lg border border-gray-300 rounded-xl mb-4 focus:border-indigo-500 focus:outline-none">
+                    
+                    <button id="auth-button" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-medium transition-colors hover:bg-indigo-700">
+                        Войти
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(container);
+            
+            document.getElementById('auth-button').addEventListener('click', async () => {
+                const phone = document.getElementById('phone-input').value.trim();
+                
+                if (!phone) {
+                    showToast('Введите номер телефона');
+                    return;
+                }
+                
+                try {
+                    container.innerHTML = `
+                        <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-indigo-100 flex items-center justify-center text-3xl">
+                            ⏳
+                        </div>
+                        <h2 class="text-2xl font-bold mb-4">Авторизация...</h2>
+                        <p class="text-gray-600">Подождите, мы проверяем ваши данные</p>
+                    `;
+                    
+                    const response = await fetch('/api/auth-phone', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            initData: window.Telegram?.WebApp?.initData || '',
+                            phone: phone.replace(/[\s\-\(\)]/g, ''),
+                            user: window.Telegram?.WebApp?.initDataUnsafe?.user
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        userData = result.user;
+                        
+                        // Initialize components
+                        if (window.loyaltyManager) window.loyaltyManager.init(userData);
+                        if (window.visitManager) window.visitManager.init(userData.id);
+                        
+                        // Remove auth container
+                        container.remove();
+                        
+                        // Show success message
+                        showToast(result.user.isNewUser 
+                            ? 'Добро пожаловать! Вы зарегистрированы в системе.'
+                            : 'Авторизация успешна');
+                            
+                        // Update UI
+                        updateUserInterface();
+                        
+                    } else {
+                        throw new Error(result.message || 'Ошибка авторизации');
+                    }
+                    
+                } catch (error) {
+                    console.error('Auth error:', error);
+                    container.innerHTML = `
+                        <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-red-100 flex items-center justify-center text-3xl">
+                            ❌
+                        </div>
+                        <h2 class="text-2xl font-bold mb-4">Ошибка</h2>
+                        <p class="text-gray-600 mb-8">${error.message || 'Произошла ошибка при авторизации'}</p>
+                        <button class="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium" id="retry-button">
+                            Попробовать снова
+                        </button>
+                    `;
+                    
+                    document.getElementById('retry-button').addEventListener('click', () => {
+                        container.remove();
+                        showPhoneAuthForm(firstName);
+                    });
+                }
+            });
+        }
+
+        // Show toast notification
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // Format money amount
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('ru-RU', {
+                style: 'currency',
+                currency: 'RUB',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(amount);
+        }
+
+        // Initialize analytics chart
+        function initAnalyticsChart() {
+            const ctx = document.getElementById('analyticsChart').getContext('2d');
+            
+            // Get data from visit manager
+            let chartData = [];
+            if (window.visitManager) {
+                chartData = window.visitManager.getVisitsChartData();
+            } else {
+                // Fallback demo data
+                chartData = [
+                    { month: 'Янв', spent: 5000 },
+                    { month: 'Фев', spent: 12000 },
+                    { month: 'Мар', spent: 8000 },
+                    { month: 'Апр', spent: 15000 },
+                    { month: 'Май', spent: 10000 },
+                    { month: 'Июн', spent: 18000 }
+                ];
+            }
+            
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: chartData.map(d => d.month),
+                    datasets: [{
+                        label: 'Расходы',
+                        data: chartData.map(d => d.spent),
+                        backgroundColor: 'rgba(99, 102, 241, 0.5)',
+                        borderColor: 'rgb(99, 102, 241)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load recent transactions
+        async function loadRecentTransactions() {
+            const container = document.getElementById('recent-transactions');
+            container.innerHTML = '<div class="text-center py-4 text-gray-500">Загрузка...</div>';
+            
+            try {
+                let transactions = [];
+                
+                if (window.visitManager) {
+                    await window.visitManager.loadTransactions();
+                    transactions = window.visitManager.transactions.slice(0, 3);
+                } else {
+                    // Fallback demo data
+                    transactions = [
+                        { type: 'accrual', description: 'Начисление за визит', amount: 450, date: '2024-06-20' },
+                        { type: 'redemption', description: 'Списание бонусов', amount: -320, date: '2024-06-18' },
+                        { type: 'accrual', description: 'Начисление за визит', amount: 680, date: '2024-06-15' }
+                    ];
+                }
+                
+                if (transactions.length === 0) {
+                    container.innerHTML = '<div class="text-center py-4 text-gray-500">Нет операций</div>';
+                    return;
+                }
+                
+                container.innerHTML = '';
+                
+                transactions.forEach(transaction => {
+                    const isPositive = transaction.amount > 0;
+                    const item = document.createElement('div');
+                    item.className = 'bg-gray-50 rounded-xl p-3 flex justify-between items-center';
+                    
+                    item.innerHTML = `
+                        <div>
+                            <div class="font-medium text-gray-900">${transaction.description}</div>
+                            <div class="text-xs text-gray-500">${formatDate(transaction.date)}</div>
+                        </div>
+                        <div class="text-lg font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}">
+                            ${isPositive ? '+' : ''}${formatMoney(transaction.amount)}
+                        </div>
+                    `;
+                    
+                    container.appendChild(item);
+                });
+                
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+                container.innerHTML = '<div class="text-center py-4 text-red-500">Ошибка загрузки данных</div>';
+            }
+        }
+
+        // Load transaction history for transactions page
+        async function loadTransactions() {
+            const container = document.getElementById('transactions-list');
+            container.innerHTML = '<div class="text-center py-4 text-gray-500">Загрузка...</div>';
+            
+            try {
+                let transactions = [];
+                
+                if (window.visitManager) {
+                    await window.visitManager.loadTransactions();
+                    transactions = window.visitManager.transactions;
+                } else {
+                    // Fallback demo data
+                    transactions = [
+                        { type: 'accrual', description: 'Начисление за визит', amount: 450, date: '2024-06-20' },
+                        { type: 'redemption', description: 'Списание бонусов', amount: -320, date: '2024-06-18' },
+                        { type: 'accrual', description: 'Начисление за визит', amount: 680, date: '2024-06-15' }
+                    ];
+                }
+                
+                if (transactions.length === 0) {
+                    container.innerHTML = '<div class="text-center py-4 text-gray-500">Нет операций</div>';
+                    return;
+                }
+                
+                container.innerHTML = '';
+                
+                transactions.forEach(transaction => {
+                    const isPositive = transaction.amount > 0;
+                    const item = document.createElement('div');
+                    item.className = 'bg-white rounded-xl p-4 shadow-sm border border-gray-100';
+                    
+                    item.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <div class="font-medium text-gray-900">${transaction.description}</div>
+                                <div class="text-xs text-gray-500 mt-1">${formatDate(transaction.date)}</div>
+                            </div>
+                            <div class="text-lg font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}">
+                                ${isPositive ? '+' : ''}${formatMoney(transaction.amount)}
+                            </div>
+                        </div>
+                    `;
+                    
+                    container.appendChild(item);
+                });
+                
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+                container.innerHTML = '<div class="text-center py-4 text-red-500">Ошибка загрузки данных</div>';
+            }
+        }
+
+        // Load visit history
+        async function loadVisitHistory() {
+            const container = document.getElementById('visits-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="text-center py-4 text-gray-500">Загрузка...</div>';
+            
+            try {
+                let visits = [];
+                
+                if (window.visitManager) {
+                    await window.visitManager.loadVisits();
+                    visits = window.visitManager.visits;
+                } else {
+                    // Fallback demo data
+                    visits = [
+                        { id: 1, title: 'Чек №12345', amount: 8500, date: '2024-06-20', services: ['Замена масла', 'Диагностика'] },
+                        { id: 2, title: 'Чек №12344', amount: 15300, date: '2024-06-15', services: ['ТО-15000', 'Замена фильтров'] },
+                        { id: 3, title: 'Чек №12343', amount: 3200, date: '2024-06-10', services: ['Развал-схождение'] }
+                    ];
+                }
+                
+                if (visits.length === 0) {
+                    container.innerHTML = '<div class="text-center py-4 text-gray-500">Нет посещений</div>';
+                    return;
+                }
+                
+                container.innerHTML = '';
+                
+                visits.forEach(visit => {
+                    const servicesList = Array.isArray(visit.services) ? visit.services.join(', ') : 'Услуги не указаны';
+                    
+                    const item = document.createElement('div');
+                    item.className = 'bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow';
+                    
+                    item.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="font-medium text-gray-900">${visit.title}</div>
+                                <div class="text-xs text-gray-500 mt-1">${formatDate(visit.date)}</div>
+                            </div>
+                            <div class="text-lg font-medium text-gray-900">
+                                ${formatMoney(visit.amount)}
+                            </div>
+                        </div>
+                        <div class="mt-3 text-sm text-gray-600">${servicesList}</div>
+                        ${visit.bonusEarned ? `<div class="mt-1 text-xs text-green-600">+${formatMoney(visit.bonusEarned)} бонусов</div>` : ''}
+                    `;
+                    
+                    item.addEventListener('click', () => showVisitDetails(visit));
+                    container.appendChild(item);
+                });
+                
+            } catch (error) {
+                console.error('Error loading visits:', error);
+                container.innerHTML = '<div class="text-center py-4 text-red-500">Ошибка загрузки данных</div>';
+            }
+        }
+
+        // Show visit details
+        function showVisitDetails(visit) {
+            const modalContent = `
+                <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl w-full max-w-md p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-gray-900">${visit.title}</h3>
+                            <button class="text-gray-500 hover:text-gray-700" onclick="closeModal(this.parentNode.parentNode.parentNode)">
+                                <span class="text-xl">✕</span>
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div class="flex justify-between py-2 border-b border-gray-100">
+                                <div class="text-gray-600">Дата</div>
+                                <div class="font-medium">${formatDate(visit.date)}</div>
+                            </div>
+                            
+                            <div class="flex justify-between py-2 border-b border-gray-100">
+                                <div class="text-gray-600">Сумма</div>
+                                <div class="font-medium">${formatMoney(visit.amount)}</div>
+                            </div>
+                            
+                            ${visit.bonusEarned ? `
+                                <div class="flex justify-between py-2 border-b border-gray-100">
+                                    <div class="text-gray-600">Начислено бонусов</div>
+                                    <div class="font-medium text-green-600">${formatMoney(visit.bonusEarned)}</div>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="py-2">
+                                <div class="text-gray-600 mb-2">Услуги</div>
+                                <div class="bg-gray-50 rounded-xl p-3">
+                                    ${Array.isArray(visit.services) && visit.services.length > 0 ? 
+                                        visit.services.map(service => `<div class="py-1">${service}</div>`).join('') : 
+                                        '<div class="text-gray-500">Услуги не указаны</div>'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6">
+                            <button onclick="closeModal(this.parentNode.parentNode.parentNode)" class="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors">
+                                Закрыть
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            const modalContainer = document.createElement('div');
+            modalContainer.innerHTML = modalContent;
+            document.body.appendChild(modalContainer.firstChild);
+        }
+
+        // Close modal
+        function closeModal(modal) {
+            if (modal) {
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.remove(), 300);
+            }
+        }
+
+        // Format date
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) return dateString;
+            
+            const options = { day: 'numeric', month: 'long', year: 'numeric' };
+            return date.toLocaleDateString('ru-RU', options);
+        }
+
+        // Initialize booking wizard
+        function initBookingWizard() {
+            const container = document.getElementById('booking-content');
+            
+            container.innerHTML = `
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-gray-900">Запись на обслуживание</h3>
+                    </div>
+                    
+                    <div id="booking-wizard" class="space-y-6">
+                        <div class="flex space-x-2 mb-6">
+                            <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div id="booking-progress" class="h-full bg-indigo-600 transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div id="step-1" class="booking-step">
+                            <h4 class="text-lg font-medium mb-4">Выберите услугу</h4>
+                            <div id="services-list" class="space-y-3">
+                                <div class="animate-pulse space-y-3">
+                                    <div class="h-16 bg-gray-200 rounded-xl"></div>
+                                    <div class="h-16 bg-gray-200 rounded-xl"></div>
+                                    <div class="h-16 bg-gray-200 rounded-xl"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="step-2" class="booking-step hidden">
+                            <h4 class="text-lg font-medium mb-4">Выберите мастера</h4>
+                            <div id="staff-list" class="space-y-3"></div>
+                        </div>
+                        
+                        <div id="step-3" class="booking-step hidden">
+                            <h4 class="text-lg font-medium mb-4">Выберите дату и время</h4>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-medium mb-2">Дата</label>
+                                <input type="date" id="booking-date" class="w-full p-3 border border-gray-200 rounded-xl">
+                            </div>
+                            <div id="time-slots" class="grid grid-cols-3 gap-2 mt-4"></div>
+                        </div>
+                        
+                        <div id="step-4" class="booking-step hidden">
+                            <h4 class="text-lg font-medium mb-4">Подтверждение записи</h4>
+                            <div class="bg-gray-50 rounded-xl p-4 space-y-3 mb-4">
+                                <div class="flex justify-between">
+                                    <div class="text-gray-600">Услуга:</div>
+                                    <div id="confirm-service" class="font-medium"></div>
+                                </div>
+                                <div class="flex justify-between">
+                                    <div class="text-gray-600">Мастер:</div>
+                                    <div id="confirm-staff" class="font-medium"></div>
+                                </div>
+                                <div class="flex justify-between">
+                                    <div class="text-gray-600">Дата и время:</div>
+                                    <div id="confirm-datetime" class="font-medium"></div>
+                                </div>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 text-sm font-medium mb-2">Комментарий (необязательно)</label>
+                                <textarea id="booking-comment" class="w-full p-3 border border-gray-200 rounded-xl" rows="3"></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="flex space-x-3">
+                            <button id="prev-btn" class="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium transition-colors hidden">
+                                Назад
+                            </button>
+                            <button id="next-btn" class="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium transition-colors">
+                                Далее
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Initialize booking wizard logic
+            initBookingLogic();
+        }
+
+        // Initialize booking logic
+        function initBookingLogic() {
+            // Placeholder for booking data
+            const bookingData = {
+                currentStep: 1,
+                totalSteps: 4,
+                service: null,
+                staff: null,
+                date: null,
+                time: null,
+                comment: ''
+            };
+            
+            // Get UI elements
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const progressBar = document.getElementById('booking-progress');
+            
+            // Update progress bar
+            const updateProgress = () => {
+                const progress = ((bookingData.currentStep - 1) / (bookingData.totalSteps - 1)) * 100;
+                progressBar.style.width = `${progress}%`;
+            };
+            
+            // Show current step
+            const showStep = (step) => {
+                document.querySelectorAll('.booking-step').forEach(el => el.classList.add('hidden'));
+                document.getElementById(`step-${step}`).classList.remove('hidden');
+                
+                prevBtn.classList.toggle('hidden', step === 1);
+                nextBtn.textContent = step === bookingData.totalSteps ? 'Подтвердить' : 'Далее';
+                
+                updateProgress();
+            };
+            
+            // Fetch services
+            const loadServices = async () => {
+                try {
+                    const response = await fetch('/api/services');
+                    const services = await response.json();
+                    
+                    const container = document.getElementById('services-list');
+                    container.innerHTML = '';
+                    
+                    services.forEach(service => {
+                        const item = document.createElement('div');
+                        item.className = 'border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-indigo-500 transition-colors';
+                        item.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <div class="font-medium text-gray-900">${service.title}</div>
+                                    <div class="text-xs text-gray-500 mt-1">Длительность: ${service.duration} мин</div>
+                                </div>
+                                <div class="text-lg font-medium text-gray-900">${formatMoney(service.price)}</div>
+                            </div>
+                        `;
+                        
+                        item.addEventListener('click', () => {
+                            document.querySelectorAll('#services-list > div').forEach(el => {
+                                el.classList.remove('border-indigo-500', 'bg-indigo-50');
+                            });
+                            item.classList.add('border-indigo-500', 'bg-indigo-50');
+                            bookingData.service = service;
+                        });
+                        
+                        container.appendChild(item);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading services:', error);
+                    document.getElementById('services-list').innerHTML = 
+                        '<div class="text-center py-4 text-red-500">Ошибка загрузки услуг</div>';
+                }
+            };
+            
+            // Button event handlers
+            prevBtn.addEventListener('click', () => {
+                if (bookingData.currentStep > 1) {
+                    bookingData.currentStep--;
+                    showStep(bookingData.currentStep);
+                }
+            });
+            
+            nextBtn.addEventListener('click', () => {
+                if (bookingData.currentStep === 1 && !bookingData.service) {
+                    showToast('Выберите услугу');
+                    return;
+                }
+                
+                if (bookingData.currentStep === 2 && !bookingData.staff) {
+                    showToast('Выберите мастера');
+                    return;
+                }
+                
+                if (bookingData.currentStep === 3 && (!bookingData.date || !bookingData.time)) {
+                    showToast('Выберите дату и время');
+                    return;
+                }
+                
+                if (bookingData.currentStep === bookingData.totalSteps) {
+                    // Final confirmation
+                    confirmBooking();
+                    return;
+                }
+                
+                if (bookingData.currentStep < bookingData.totalSteps) {
+                    bookingData.currentStep++;
+                    
+                    if (bookingData.currentStep === 2) {
+                        loadStaff();
+                    } else if (bookingData.currentStep === 3) {
+                        initDatePicker();
+                    } else if (bookingData.currentStep === 4) {
+                        updateConfirmation();
+                    }
+                    
+                    showStep(bookingData.currentStep);
+                }
+            });
+            
+            // Load staff for selected service
+            const loadStaff = async () => {
+                try {
+                    const response = await fetch(`/api/staff/${bookingData.service.id}`);
+                    const staff = await response.json();
+                    
+                    const container = document.getElementById('staff-list');
+                    container.innerHTML = '';
+                    
+                    staff.forEach(person => {
+                        const item = document.createElement('div');
+                        item.className = 'border border-gray-200 rounded-xl p-4 cursor-pointer hover:border-indigo-500 transition-colors';
+                        item.innerHTML = `
+                            <div class="flex items-center">
+                                <div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-xl mr-3">
+                                    👨‍🔧
+                                </div>
+                                <div>
+                                    <div class="font-medium text-gray-900">${person.name}</div>
+                                    <div class="text-xs text-gray-500 mt-1">${person.specialization}</div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        item.addEventListener('click', () => {
+                            document.querySelectorAll('#staff-list > div').forEach(el => {
+                                el.classList.remove('border-indigo-500', 'bg-indigo-50');
+                            });
+                            item.classList.add('border-indigo-500', 'bg-indigo-50');
+                            bookingData.staff = person;
+                        });
+                        
+                        container.appendChild(item);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading staff:', error);
+                    document.getElementById('staff-list').innerHTML = 
+                        '<div class="text-center py-4 text-red-500">Ошибка загрузки мастеров</div>';
+                }
+            };
+            
+            // Initialize date picker
+            const initDatePicker = () => {
+                const datePicker = document.getElementById('booking-date');
+                
+                // Set min date to today
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                datePicker.min = `${yyyy}-${mm}-${dd}`;
+                
+                // Set max date to 30 days from now
+                const maxDate = new Date();
+                maxDate.setDate(maxDate.getDate() + 30);
+                const maxYyyy = maxDate.getFullYear();
+                const maxMm = String(maxDate.getMonth() + 1).padStart(2, '0');
+                const maxDd = String(maxDate.getDate()).padStart(2, '0');
+                datePicker.max = `${maxYyyy}-${maxMm}-${maxDd}`;
+                
+                // Set default value to tomorrow
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tYyyy = tomorrow.getFullYear();
+                const tMm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+                const tDd = String(tomorrow.getDate()).padStart(2, '0');
+                datePicker.value = `${tYyyy}-${tMm}-${tDd}`;
+                
+                // Load time slots for selected date
+                datePicker.addEventListener('change', () => {
+                    bookingData.date = datePicker.value;
+                    loadTimeSlots(bookingData.date);
+                });
+                
+                // Initialize with default date
+                bookingData.date = datePicker.value;
+                loadTimeSlots(bookingData.date);
+            };
+            
+            // Load time slots for selected date
+            const loadTimeSlots = async (date) => {
+                try {
+                    const response = await fetch(`/api/slots/${bookingData.staff.id}/${date}`);
+                    const slots = await response.json();
+                    
+                    const container = document.getElementById('time-slots');
+                    container.innerHTML = '';
+                    
+                    if (slots.length === 0) {
+                        container.innerHTML = '<div class="col-span-3 text-center py-4 text-gray-500">Нет свободных слотов на выбранную дату</div>';
+                        return;
+                    }
+                    
+                    slots.forEach(slot => {
+                        const item = document.createElement('button');
+                        item.className = 'py-3 px-4 border border-gray-200 rounded-xl text-center hover:border-indigo-500 transition-colors';
+                        item.textContent = slot.time;
+                        
+                        item.addEventListener('click', () => {
+                            document.querySelectorAll('#time-slots > button').forEach(el => {
+                                el.classList.remove('border-indigo-500', 'bg-indigo-50', 'font-medium');
+                            });
+                            item.classList.add('border-indigo-500', 'bg-indigo-50', 'font-medium');
+                            bookingData.time = slot.time;
+                            bookingData.datetime = slot.datetime;
+                        });
+                        
+                        container.appendChild(item);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading time slots:', error);
+                    document.getElementById('time-slots').innerHTML = 
+                        '<div class="col-span-3 text-center py-4 text-red-500">Ошибка загрузки временных слотов</div>';
+                }
+            };
+            
+            // Update confirmation page
+            const updateConfirmation = () => {
+                document.getElementById('confirm-service').textContent = bookingData.service.title;
+                document.getElementById('confirm-staff').textContent = bookingData.staff.name;
+                
+                const formattedDate = new Date(bookingData.date).toLocaleDateString('ru-RU', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                });
+                
+                document.getElementById('confirm-datetime').textContent = `${formattedDate}, ${bookingData.time}`;
+                
+                document.getElementById('booking-comment').addEventListener('input', (e) => {
+                    bookingData.comment = e.target.value;
+                });
+            };
+            
+            // Confirm booking
+            const confirmBooking = async () => {
+                try {
+                    nextBtn.disabled = true;
+                    nextBtn.textContent = 'Обработка...';
+                    
+                    const response = await fetch('/api/booking', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: userData.id,
+                            serviceId: bookingData.service.id,
+                            staffId: bookingData.staff.id,
+                            datetime: bookingData.datetime,
+                            comment: bookingData.comment
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        document.getElementById('booking-wizard').innerHTML = `
+                            <div class="text-center py-8">
+                                <div class="w-20 h-20 mx-auto mb-6 rounded-full bg-green-100 flex items-center justify-center text-3xl">
+                                    ✅
+                                </div>
+                                <h3 class="text-xl font-bold mb-2">Запись успешно создана</h3>
+                                <p class="text-gray-600 mb-6">
+                                    Вы записаны на ${new Date(result.datetime).toLocaleDateString('ru-RU', {
+                                        day: 'numeric',
+                                        month: 'long',
+                                        year: 'numeric'
+                                    })} в ${new Date(result.datetime).toLocaleTimeString('ru-RU', {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    })}
+                                </p>
+                                <button onclick="showPage('dashboard')" class="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium transition-colors">
+                                    Вернуться на главную
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                        throw new Error(result.message || 'Ошибка создания записи');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error creating booking:', error);
+                    showToast('Ошибка создания записи: ' + error.message);
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = 'Подтвердить';
+                }
+            };
+            
+            // Initialize the booking wizard
+            loadServices();
+            showStep(1);
+        }
+
+        // Load maintenance data
+        async function loadMaintenanceData() {
+            const container = document.getElementById('maintenance-list');
+            if (!container) return;
+            
+            container.innerHTML = '<div class="text-center py-4 text-gray-500">Загрузка...</div>';
+            
+            try {
+                let records = [];
+                
+                if (window.visitManager) {
+                    await window.visitManager.loadMaintenance();
+                    records = window.visitManager.maintenanceRecords;
+                } else {
+                    // Fallback demo data
+                    records = [
+                        { id: 1, title: '🛢️ Замена масла', subtitle: 'Каждые 10,000 км', status: 'soon', lastPerformed: '2024-05-15', lastMileage: 40000, nextDue: 50000 },
+                        { id: 2, title: '🔧 ТО-15000', subtitle: 'Каждые 15,000 км', status: 'ok', lastPerformed: '2024-06-01', lastMileage: 45000, nextDue: 60000 }
+                    ];
+                }
+                
+                // Also load cars
+                let cars = [];
+                
+                if (window.visitManager) {
+                    await window.visitManager.loadUserCars();
+                    cars = window.visitManager.userCars;
+                } else {
+                    // Fallback demo data
+                    cars = [
+                        { id: 1, make: 'Toyota', model: 'Camry', year: 2020, licensePlate: 'A123BC', mileage: 48500 }
+                    ];
+                }
+                
+                // Update cars list
+                const carsContainer = document.getElementById('cars-list');
+                if (carsContainer) {
+                    carsContainer.innerHTML = '';
+                    
+                    if (cars.length === 0) {
+                        carsContainer.innerHTML = '<div class="text-center py-4 text-gray-500">Нет добавленных автомобилей</div>';
+                    } else {
+                        cars.forEach(car => {
+                            const item = document.createElement('div');
+                            item.className = 'bg-gray-50 rounded-xl p-4';
+                            
+                            item.innerHTML = `
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <div class="font-medium text-gray-900">${car.make} ${car.model}</div>
+                                        <div class="text-xs text-gray-500 mt-1">${car.year} г.в., ${car.licensePlate}</div>
+                                    </div>
+                                    <div class="text-sm font-medium text-gray-600">
+                                        ${car.mileage} км
+                                    </div>
+                                </div>
+                                <div class="mt-3 grid grid-cols-2 gap-2">
+                                    <button class="text-center py-2 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors">
+                                        Обновить пробег
+                                    </button>
+                                    <button class="text-center py-2 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                                        Подробнее
+                                    </button>
+                                </div>
+                            `;
+                            
+                            carsContainer.appendChild(item);
+                        });
+                    }
+                }
+                
+                // Update maintenance list
+                if (records.length === 0) {
+                    container.innerHTML = '<div class="text-center py-4 text-gray-500">Нет записей о ТО</div>';
+                    return;
+                }
+                
+                container.innerHTML = '';
+                
+                const statusText = {
+                    'ok': 'В порядке',
+                    'soon': 'Скоро',
+                    'overdue': 'Просрочено',
+                    'never': 'Не выполнялось'
+                };
+                
+                const statusColors = {
+                    'ok': 'text-green-600 bg-green-50',
+                    'soon': 'text-yellow-600 bg-yellow-50',
+                    'overdue': 'text-red-600 bg-red-50',
+                    'never': 'text-gray-600 bg-gray-100'
+                };
+                
+                records.forEach(record => {
+                    const item = document.createElement('div');
+                    item.className = 'bg-white rounded-xl p-4 shadow-sm border border-gray-100';
+                    
+                    const lastPerformed = record.lastPerformed ? formatDate(record.lastPerformed) : 'Никогда';
+                    
+                    item.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="font-medium text-gray-900">${record.title}</div>
+                                <div class="text-xs text-gray-500 mt-1">${record.subtitle}</div>
+                                ${record.lastPerformed ? `<div class="text-xs mt-1">Последнее ТО: ${lastPerformed} (${record.lastMileage} км)</div>` : ''}
+                            </div>
+                            <div class="px-3 py-1 rounded-full text-xs font-medium ${statusColors[record.status] || 'text-gray-600 bg-gray-100'}">
+                                ${statusText[record.status] || record.status}
+                            </div>
+                        </div>
+                        <div class="mt-3 flex justify-between items-center">
+                            <div class="text-xs">
+                                ${record.nextDue ? `Следующее ТО: ${record.nextDue} км` : ''}
+                            </div>
+                            <button class="text-xs px-3 py-1 border border-indigo-200 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors">
+                                Отметить выполнение
+                            </button>
+                        </div>
+                    `;
+                    
+                    container.appendChild(item);
+                });
+                
+            } catch (error) {
+                console.error('Error loading maintenance data:', error);
+                container.innerHTML = '<div class="text-center py-4 text-red-500">Ошибка загрузки данных</div>';
+            }
+        }
+
+        // Load profile data
+        function loadProfileData() {
+            if (!userData) return;
+            
+            document.getElementById('profile-name').value = userData.name || '';
+            document.getElementById('profile-phone').value = userData.phone || '';
+            document.getElementById('profile-telegram-id').value = userData.id || '';
+            
+            if (window.loyaltyManager) {
+                const levelData = window.loyaltyManager.userStats;
+                if (levelData) {
+                    document.getElementById('loyalty-level-name').textContent = levelData.level.name;
+                    document.getElementById('loyalty-level-benefits').textContent = window.loyaltyManager.getDiscountInfo();
+                    document.getElementById('loyalty-progress').style.width = `${levelData.progress}%`;
+                    
+                    if (levelData.nextLevel) {
+                        document.getElementById('loyalty-progress-text').textContent = 
+                            `До ${levelData.nextLevel.name}: ${formatMoney(levelData.needed)}`;
+                    } else {
+                        document.getElementById('loyalty-progress-text').textContent = 'Максимальный уровень';
+                    }
+                }
+            }
+        }
+
+        // Show redeem bonuses modal
+        function redeemBonuses() {
+            if (!userData) {
+                showToast('Необходимо авторизоваться');
+                return;
+            }
+            
+            document.getElementById('redeem-modal').classList.remove('hidden');
+            document.getElementById('available-balance').textContent = userData.balance;
+            document.getElementById('redeem-amount').value = '';
+            document.getElementById('redeem-description').value = '';
+        }
+
+        // Close redeem modal
+        function closeRedeemModal() {
+            document.getElementById('redeem-modal').classList.add('hidden');
+        }
+
+        // Confirm redeem
+        async function confirmRedeem() {
+            const amount = parseInt(document.getElementById('redeem-amount').value);
+            const description = document.getElementById('redeem-description').value;
+            
+            if (!amount || amount <= 0) {
+                showToast('Введите корректную сумму');
+                return;
+            }
+            
+            if (amount > userData.balance) {
+                showToast('Недостаточно бонусов');
+                return;
+            }
+            
+            try {
+                const result = await window.loyaltyManager.redeemBonuses(amount, description);
+                
+                if (result.success) {
+                    closeRedeemModal();
+                    userData.balance = result.newBalance;
+                    updateUserInterface();
+                    showToast(result.message);
+                } else {
+                    showToast(result.message);
+                }
+            } catch (error) {
+                console.error('Error redeeming bonuses:', error);
+                showToast('Ошибка при списании бонусов');
+            }
+        }
+
+        // Telegram WebApp back button handler
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.BackButton.onClick(() => {
+                if (currentPage !== 'dashboard') {
+                    showPage('dashboard');
+                } else {
+                    window.Telegram.WebApp.close();
+                }
+            });
+        }
+    </script>
+</body>
+</html>

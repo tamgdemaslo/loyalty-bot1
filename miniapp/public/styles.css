@@ -569,6 +569,424 @@ body {
     transition: all 0.2s;
 }
 
+/* Additional styles for new functionality */
+.phone-input-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 20px;
+    background: white;
+}
+
+.phone-prefix {
+    margin-right: 10px;
+    font-weight: 500;
+}
+
+#phone-input {
+    border: none;
+    outline: none;
+    flex: 1;
+    font-size: 16px;
+}
+
+.main-menu {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 20px;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    background: var(--card-background);
+    border: none;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 16px;
+    text-align: left;
+}
+
+.menu-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.menu-item.logout {
+    background: var(--danger-color);
+    color: white;
+}
+
+.menu-icon {
+    font-size: 24px;
+    margin-right: 15px;
+}
+
+.balance-card {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    padding: 30px;
+    border-radius: 16px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.balance-main {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.balance-value {
+    font-size: 48px;
+    font-weight: 700;
+}
+
+.balance-currency {
+    font-size: 20px;
+    opacity: 0.9;
+}
+
+.balance-info {
+    opacity: 0.8;
+    font-size: 14px;
+}
+
+.bonus-rules {
+    background: var(--card-background);
+    padding: 20px;
+    border-radius: 12px;
+    margin-top: 20px;
+}
+
+.bonus-rules h3 {
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+.bonus-rules ul {
+    list-style: none;
+    padding: 0;
+}
+
+.bonus-rules li {
+    padding: 8px 0;
+    padding-left: 20px;
+    position: relative;
+}
+
+.bonus-rules li:before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--primary-color);
+}
+
+.visits-list,
+.transactions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.visit-card,
+.transaction-item {
+    background: var(--card-background);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+}
+
+.visit-header,
+.transaction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.visit-date,
+.transaction-date {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.visit-amount,
+.transaction-amount {
+    font-weight: 600;
+    font-size: 18px;
+}
+
+.transaction-amount.positive {
+    color: var(--success-color);
+}
+
+.transaction-amount.positive:before {
+    content: "+";
+}
+
+.transaction-amount.negative {
+    color: var(--danger-color);
+}
+
+.visit-details,
+.transaction-details {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.transaction-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding: 0 5px;
+}
+
+.filter-btn {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid var(--border-color);
+    background: var(--card-background);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.filter-btn:active {
+    transform: scale(0.95);
+}
+
+.filter-btn.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+/* Achievements */
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    padding: 20px;
+}
+
+.achievement-card {
+    background: var(--card-background);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    transition: transform 0.3s ease;
+}
+
+.achievement-card.unlocked {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+}
+
+.achievement-card.locked {
+    opacity: 0.6;
+    filter: grayscale(0.5);
+}
+
+.achievement-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 10px;
+}
+
+.achievement-card h3 {
+    font-size: 16px;
+    margin-bottom: 5px;
+}
+
+.achievement-card p {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.achievement-card.unlocked p {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* About Screen */
+.about-content {
+    padding: 20px;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.about-content h3 {
+    color: var(--primary-color);
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
+
+.about-content ul {
+    list-style: none;
+    padding: 0;
+}
+
+.about-content ul li {
+    padding: 10px 0;
+    padding-left: 25px;
+    position: relative;
+}
+
+.about-content ul li:before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--success-color);
+}
+
+.app-version {
+    margin-top: 40px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* Modal styles */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    body {
+        font-size: 16px;
+        -webkit-text-size-adjust: 100%;
+    }
+    
+    .container {
+        padding: 0;
+        max-width: 100%;
+    }
+    
+    .screen {
+        min-height: 100vh;
+        border-radius: 0;
+    }
+    
+    .auth-container {
+        width: 90%;
+        padding: 30px 20px;
+    }
+    
+    .header {
+        padding: 15px;
+        border-radius: 0;
+    }
+    
+    .main-menu {
+        padding: 10px;
+    }
+    
+    .menu-item {
+        padding: 20px;
+        font-size: 16px;
+    }
+    
+    .screen-header {
+        padding: 15px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: var(--background-color);
+    }
+    
+    .screen-content {
+        padding: 15px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    
+    .achievements-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        padding: 15px;
+    }
+    
+    .visit-card,
+    .transaction-item {
+        margin: 0 0 10px 0;
+    }
+    
+    /* Touch feedback */
+    .btn,
+    .menu-item,
+    .back-btn,
+    .filter-btn {
+        -webkit-tap-highlight-color: transparent;
+    }
+    
+    .btn:active,
+    .menu-item:active,
+    .back-btn:active {
+        transform: scale(0.95);
+    }
+}
+
+/* iOS specific fixes */
+@supports (-webkit-touch-callout: none) {
+    .screen {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    
+    .auth-container input {
+        font-size: 16px; /* Prevent zoom on focus */
+    }
+}
+
 .btn-secondary:active {
     transform: scale(0.98);
     opacity: 0.8;
@@ -677,6 +1095,44 @@ body {
     
     .modal {
         margin: 0 12px;
+        max-width: calc(100% - 24px);
+    }
+    
+    .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .card-header h3 {
+        margin-bottom: 8px;
+    }
+    
+    .transaction-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .transaction-amount {
+        margin-top: 8px;
+    }
+    
+    .history-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .history-amount {
+        margin-top: 4px;
+    }
+    
+    .maintenance-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .maintenance-status {
+        margin-top: 8px;
+        align-self: flex-start;
     }
 }
 

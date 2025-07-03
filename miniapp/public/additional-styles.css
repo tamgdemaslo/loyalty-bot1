@@ -1,0 +1,137 @@
+/* Additional styles for new screens */
+
+/* Root variables */
+:root {
+    --border-color: #E5E5EA;
+    --card-background: #FFFFFF;
+    --text-secondary: #8E8E93;
+    --danger-color: #FF3B30;
+}
+
+/* Screen layout */
+.screen {
+    display: none;
+    min-height: 100vh;
+    background: var(--background-color, #F2F2F7);
+}
+
+.screen.active {
+    display: block;
+}
+
+.screen-header {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    background: white;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.screen-header h2 {
+    flex: 1;
+    text-align: center;
+    margin: 0;
+    font-size: 20px;
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 8px;
+}
+
+.screen-content {
+    padding: 20px;
+}
+
+/* Auth screen */
+.auth-container {
+    background: white;
+    border-radius: 16px;
+    padding: 40px;
+    margin: 50px auto;
+    max-width: 400px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.auth-container h1 {
+    text-align: center;
+    margin-bottom: 10px;
+    color: var(--primary-color);
+}
+
+.auth-container p {
+    text-align: center;
+    color: var(--text-secondary);
+    margin-bottom: 30px;
+}
+
+.error-message {
+    display: none;
+    background: #FEE;
+    color: var(--danger-color);
+    padding: 12px;
+    border-radius: 8px;
+    margin-top: 16px;
+    text-align: center;
+    font-size: 14px;
+}
+
+/* Stats */
+.stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.stat-value {
+    display: block;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* Main styles that might be missing */
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+    background: var(--background-color);
+    min-height: 100vh;
+}
+
+.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.btn-primary {
+    background: var(--primary-color);
+    color: white;
+    width: 100%;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+.btn-primary:active {
+    transform: scale(0.98);
+}
