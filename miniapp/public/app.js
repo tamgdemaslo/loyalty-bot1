@@ -1,821 +1,333 @@
-// Telegram Mini App - Система лояльности
 class LoyaltyApp {
     constructor() {
-        console.log('📱 Initializing LoyaltyApp...');
-        console.log('💭 window.Telegram exists:', !!window.Telegram);
-        
-        // Защита от отсутствия Telegram объекта (для локальной разработки)
-        if (!window.Telegram) {
-            console.log('⚠️ Creating stub Telegram WebApp object for development');
-            window.Telegram = { 
-                WebApp: { 
-                    ready() { console.log('📍 Stub ready() called'); }, 
-                    expand() { console.log('📍 Stub expand() called'); }, 
-                    initData: '', 
-                    initDataUnsafe: { user: { id: 12345, first_name: 'DevUser' } },
-                    BackButton: { show() {}, hide() {}, onClick(cb) {} },
-                    showAlert(text) { alert(text); }
-                } 
-            };
-        }
-        
         this.tg = window.Telegram.WebApp;
-        this.userData = null;
-        this.currentPage = 'dashboard';
-        this.bookingData = {};
-        
+        this.appContainer = document.getElementById('app-container');
+        this.state = {
+            status: 'loading', // loading, auth_required, ready, error
+            page: 'dashboard', // dashboard, history, profile
+            userData: this.tg.initDataUnsafe?.user || null,
+            loyaltyData: null,
+            history: null,
+            error: null,
+        };
         this.init();
     }
 
-    init() {
-        // Инициализация Telegram WebApp
+    // =================================================================
+    // 1. INITIALIZATION & STATE MANAGEMENT
+    // =================================================================
+
+    async init() {
         this.tg.ready();
         this.tg.expand();
-        
-        // Получаем данные пользователя из Telegram
-        this.userData = this.tg.initDataUnsafe?.user;
-        
-        // Загружаем данные приложения
-        this.loadUserData();
-        
-        // Настраиваем обработчики событий
-        this.setupEventListeners();
-        
-        // Применяем тему Telegram
         this.applyTelegramTheme();
-        
-        // Показываем главный экран
-        this.showMainApp();
-    }
+        this.attachEventListeners();
 
-    applyTelegramTheme() {
-        const root = document.documentElement;
-        
-        // Применяем цвета темы Telegram
-        if (this.tg.themeParams) {
-            const theme = this.tg.themeParams;
-            
-            if (theme.bg_color) root.style.setProperty('--tg-theme-bg-color', theme.bg_color);
-            if (theme.text_color) root.style.setProperty('--tg-theme-text-color', theme.text_color);
-            if (theme.hint_color) root.style.setProperty('--tg-theme-hint-color', theme.hint_color);
-            if (theme.link_color) root.style.setProperty('--tg-theme-link-color', theme.link_color);
-            if (theme.button_color) root.style.setProperty('--tg-theme-button-color', theme.button_color);
-            if (theme.button_text_color) root.style.setProperty('--tg-theme-button-text-color', theme.button_text_color);
-            if (theme.secondary_bg_color) root.style.setProperty('--tg-theme-secondary-bg-color', theme.secondary_bg_color);
-        }
-    }
-
-    async loadUserData() {
-        // Проверяем, есть ли авторизация, но по сути сразу показываем форму телефона
         try {
-            console.log('Checking authorization status...');
-            
             const response = await fetch('/api/user', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    initData: this.tg.initData || '',
-                    user: this.tg.initDataUnsafe?.user || null
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ initData: this.tg.initData, user: this.state.userData })
             });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => null);
-                console.log('Server requires phone auth:', errorData);
-                
-                // Показываем форму авторизации по телефону
-                this.showPhoneAuthForm({
-                    firstName: errorData?.firstName || this.userData?.first_name || 'пользователь'
-                });
+
+            if (response.status === 404 || response.status === 403) {
+                const errorData = await response.json().catch(() => ({}));
+                this.setState({ status: 'auth_required', error: errorData.message });
                 return;
             }
-            
-            // Показываем главный экран и загружаем данные
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('auth-container').style.display = 'none';
-            document.getElementById('main-app').style.display = 'block';
-            this.updateUserInterface();
+            if (!response.ok) throw new Error((await response.json()).message || 'Ошибка сети');
+
+            const loyaltyData = await response.json();
+            this.setState({ status: 'ready', loyaltyData });
+
         } catch (error) {
-            console.error('Error loading user data:', error);
-            
-            // При любой ошибке показываем форму авторизации
-            this.showPhoneAuthForm({
-                firstName: this.userData?.first_name || 'пользователь'
-            });
+            console.error("Initialization Error:", error);
+            this.setState({ status: 'error', error: 'Не удалось загрузить данные. Попробуйте перезапустить приложение.' });
         }
     }
 
-    updateUserInterface() {
-        // Обновляем информацию в заголовке
-        document.getElementById('user-name').textContent = this.userLoyaltyData.name;
-        document.getElementById('user-status').textContent = `Статус: ${this.userLoyaltyData.level}`;
-        document.getElementById('balance-amount').textContent = this.formatMoney(this.userLoyaltyData.balance);
-        
-        // Обновляем карточку лояльности
-        this.updateLoyaltyCard();
-        
-        // Обновляем профиль
-        this.updateProfileData();
-        
-        // Загружаем последние транзакции
-        this.loadRecentTransactions();
-        
-        // Загружаем историю посещений
-        this.loadVisitHistory();
-        
-        // Загружаем данные ТО
-        this.loadMaintenanceData();
+    setState(newState) {
+        Object.assign(this.state, newState);
+        this.render();
     }
 
-    updateLoyaltyCard() {
-        const levelBadge = document.getElementById('level-badge');
-        const progressFill = document.getElementById('progress-fill');
-        const currentSpent = document.getElementById('current-spent');
-        const nextLevelReq = document.getElementById('next-level-requirement');
-        
-        levelBadge.textContent = this.userLoyaltyData.level;
-        levelBadge.className = `level-badge ${this.userLoyaltyData.level}`;
-        
-        currentSpent.textContent = this.formatMoney(this.userLoyaltyData.totalSpent);
-        
-        const levels = {
-            'Bronze': { next: 'Silver', requirement: 50000 },
-            'Silver': { next: 'Gold', requirement: 150000 },
-            'Gold': { next: 'Platinum', requirement: 300000 },
-            'Platinum': { next: 'VIP', requirement: 500000 },
-            'VIP': { next: null, requirement: null }
-        };
-        
-        const currentLevel = levels[this.userLoyaltyData.level];
-        if (currentLevel.next) {
-            const progress = (this.userLoyaltyData.totalSpent / currentLevel.requirement) * 100;
-            progressFill.style.width = `${Math.min(progress, 100)}%`;
-            
-            const remaining = currentLevel.requirement - this.userLoyaltyData.totalSpent;
-            nextLevelReq.textContent = `до ${currentLevel.next}: ${this.formatMoney(remaining)}`;
-        } else {
-            progressFill.style.width = '100%';
-            nextLevelReq.textContent = 'Максимальный уровень';
+    // =================================================================
+    // 2. RENDERING LOGIC
+    // =================================================================
+
+    render() {
+this.tg.BackButton.isVisible = this.state.page !== 'dashboard' && this.state.status === 'ready';
+        let content = '';
+        switch (this.state.status) {
+            case 'loading':       content = this.renderScreen('Загрузка...', 'spinner'); break;
+            case 'auth_required': content = this.renderAuthForm(); break;
+            case 'ready':         content = this.renderMainApp(); break;
+            case 'error':         content = this.renderScreen('Ошибка', 'error', this.state.error); break;
         }
+        this.appContainer.innerHTML = content;
     }
 
-    updateProfileData() {
-        document.getElementById('profile-name').textContent = this.userLoyaltyData.name;
-        document.getElementById('profile-phone').textContent = this.userLoyaltyData.phone;
-        document.getElementById('profile-registered').textContent = this.formatDate(this.userLoyaltyData.registeredDate);
-        
-        document.getElementById('total-visits').textContent = this.userLoyaltyData.totalVisits;
-        document.getElementById('total-spent').textContent = this.formatMoney(this.userLoyaltyData.totalSpent);
-        document.getElementById('total-earned').textContent = this.formatMoney(this.userLoyaltyData.totalEarned);
-        document.getElementById('total-redeemed').textContent = this.formatMoney(this.userLoyaltyData.totalRedeemed);
+    renderScreen(title, type, message = '') {
+        const icon = type === 'spinner' ? '<div class="spinner"></div>' : (type === 'error' ? '⚠️' : '❓');
+        return `
+            <div class="screen-container">
+                <div class="icon">${icon}</div>
+                <h2>${title}</h2>
+                ${message ? `<p>${message}</p>` : ''}
+            </div>`;
     }
 
-    async loadRecentTransactions() {
-        const container = document.getElementById('recent-transactions');
-        
-        try {
-            const userId = this.userLoyaltyData?.id || this.userData?.id;
-            if (!userId) {
-                throw new Error('User ID not available');
-            }
-            
-            const response = await fetch(`/api/transactions/${userId}`);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const transactions = await response.json();
-            
-            container.innerHTML = '';
-            
-            if (transactions.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">Нет операций</p>';
-                return;
-            }
-            
-            // Показываем только последние 3 транзакции на главной
-            const recentTransactions = transactions.slice(0, 3);
-            
-            recentTransactions.forEach(transaction => {
-                const item = document.createElement('div');
-                item.className = 'transaction-item';
-                
-                const isPositive = transaction.amount > 0;
-                
-                item.innerHTML = `
-                    <div class="transaction-info">
-                        <div class="transaction-type">${transaction.description}</div>
-                        <div class="transaction-date">${this.formatDate(transaction.date)}</div>
+    renderAuthForm() {
+        const firstName = this.state.userData?.first_name || 'пользователь';
+        return `
+            <div class="screen-container" id="auth-container">
+                <div class="icon">📞</div>
+                <h2>Авторизация</h2>
+                <p>Добро пожаловать, ${firstName}!<br>Введите номер телефона для доступа к бонусам.</p>
+                <div class="auth-form" style="margin-top: 24px; width: 100%; max-width: 320px;">
+                    <div class="phone-input-wrapper">
+                        <span>+7</span>
+                        <input type="tel" id="user-phone-input" placeholder="999 123-45-67" maxlength="15" data-action="format-phone">
                     </div>
-                    <div class="transaction-amount ${isPositive ? 'positive' : 'negative'}">
-                        ${isPositive ? '+' : ''}${this.formatMoney(Math.abs(transaction.amount))}
-                    </div>
-                `;
-                
-                container.appendChild(item);
-            });
-            
-        } catch (error) {
-            console.error('Error loading transactions:', error);
-            
-            // Fallback к демо данным
-            const transactions = [
-                { type: 'Начисление за визит', amount: 450, date: '2024-01-20', positive: true },
-                { type: 'Списание бонусов', amount: -320, date: '2024-01-18', positive: false },
-                { type: 'Начисление за визит', amount: 680, date: '2024-01-15', positive: true }
-            ];
-            
-            container.innerHTML = '';
-            
-            transactions.forEach(transaction => {
-                const item = document.createElement('div');
-                item.className = 'transaction-item';
-                
-                item.innerHTML = `
-                    <div class="transaction-info">
-                        <div class="transaction-type">${transaction.type}</div>
-                        <div class="transaction-date">${this.formatDate(transaction.date)}</div>
-                    </div>
-                    <div class="transaction-amount ${transaction.positive ? 'positive' : 'negative'}">
-                        ${transaction.positive ? '+' : ''}${this.formatMoney(Math.abs(transaction.amount))}
-                    </div>
-                `;
-                
-                container.appendChild(item);
-            });
-        }
+                    <button data-action="auth-by-phone" class="btn-primary">Войти</button>
+                </div>
+            </div>`;
     }
 
-    async loadVisitHistory() {
-        const container = document.getElementById('history-list');
-        
-        try {
-            const userId = this.userLoyaltyData?.id || this.userData?.id;
-            if (!userId) {
-                throw new Error('User ID not available');
-            }
-            
-            const response = await fetch(`/api/visits/${userId}`);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const visits = await response.json();
-            
-            container.innerHTML = '';
-            
-            if (visits.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">История пуста</p>';
-                return;
-            }
-            
-            visits.forEach(visit => {
-                const item = document.createElement('div');
-                item.className = 'history-item';
-                
-                // Формируем список услуг из массива services
-                const servicesList = visit.services && visit.services.length > 0 
-                    ? visit.services.map(s => s.name || s).join(', ')
-                    : 'Услуги не указаны';
-                
-                item.innerHTML = `
-                    <div class="history-header">
-                        <div class="history-title">${visit.title}</div>
-                        <div class="history-amount">${this.formatMoney(visit.amount)}</div>
-                    </div>
-                    <div class="history-date">${this.formatDate(visit.date)}</div>
-                    <div style="margin-top: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
-                        ${servicesList}
-                    </div>
-                    ${visit.bonusEarned ? `<div style="margin-top: 4px; font-size: 12px; color: #4CAF50;">+${this.formatMoney(visit.bonusEarned)} бонусов</div>` : ''}
-                `;
-                
-                item.addEventListener('click', () => this.showVisitDetails(visit));
-                container.appendChild(item);
-            });
-            
-        } catch (error) {
-            console.error('Error loading visit history:', error);
-            
-            // Fallback к демо данным
-            const visits = [
-                { id: 1, title: 'Чек №12345', amount: 8500, date: '2024-01-20', services: ['Замена масла', 'Диагностика'] },
-                { id: 2, title: 'Чек №12344', amount: 15300, date: '2024-01-15', services: ['ТО-15000', 'Замена фильтров'] },
-                { id: 3, title: 'Чек №12343', amount: 3200, date: '2024-01-10', services: ['Развал-схождение'] }
-            ];
-            
-            container.innerHTML = '';
-            
-            visits.forEach(visit => {
-                const item = document.createElement('div');
-                item.className = 'history-item';
-                
-                item.innerHTML = `
-                    <div class="history-header">
-                        <div class="history-title">${visit.title}</div>
-                        <div class="history-amount">${this.formatMoney(visit.amount)}</div>
-                    </div>
-                    <div class="history-date">${this.formatDate(visit.date)}</div>
-                    <div style="margin-top: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
-                        ${visit.services.join(', ')}
-                    </div>
-                `;
-                
-                item.addEventListener('click', () => this.showVisitDetails(visit));
-                container.appendChild(item);
-            });
-        }
-    }
+    renderMainApp() {
+        const { loyaltyData, page } = this.state;
+        if (!loyaltyData) return this.renderScreen('Ошибка', 'error', 'Не удалось получить данные пользователя.');
 
-    async loadMaintenanceData() {
-        const container = document.getElementById('maintenance-overview');
-        
-        try {
-            const userId = this.userLoyaltyData?.id || this.userData?.id;
-            if (!userId) {
-                throw new Error('User ID not available');
-            }
-            
-            const response = await fetch(`/api/maintenance/${userId}`);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const maintenanceItems = await response.json();
-            
-            container.innerHTML = '';
-            
-            if (maintenanceItems.length === 0) {
-                container.innerHTML = '<p style="text-align: center; color: var(--tg-theme-hint-color);">Нет данных о ТО</p>';
-                return;
-            }
-            
-            maintenanceItems.forEach(item => {
-                const element = document.createElement('div');
-                element.className = 'maintenance-item';
-                
-                let statusText = '';
-                switch (item.status) {
-                    case 'ok': statusText = 'В порядке'; break;
-                    case 'soon': statusText = 'Скоро'; break;
-                    case 'overdue': statusText = 'Просрочено'; break;
-                    case 'never': statusText = 'Не делали'; break;
-                    default: statusText = item.status;
-                }
-                
-                element.innerHTML = `
-                    <div class="maintenance-info">
-                        <div class="maintenance-title">${item.title}</div>
-                        <div class="maintenance-subtitle">${item.subtitle}</div>
-                        ${item.lastPerformed ? `<div style="font-size: 12px; color: var(--tg-theme-hint-color);">Последнее: ${this.formatDate(item.lastPerformed)} (${item.lastMileage} км)</div>` : ''}
-                    </div>
-                    <div class="maintenance-status ${item.status}">${statusText}</div>
-                `;
-                
-                container.appendChild(element);
-            });
-            
-        } catch (error) {
-            console.error('Error loading maintenance data:', error);
-            
-            // Fallback к демо данным
-            const maintenanceItems = [
-                { id: 1, title: '🛢️ Замена масла', subtitle: 'Каждые 10,000 км', status: 'soon', lastKm: 48500, nextKm: 50000 },
-                { id: 2, title: '🔧 ТО-15000', subtitle: 'Каждые 15,000 км', status: 'ok', lastKm: 45000, nextKm: 60000 },
-                { id: 3, title: '🛞 Замена колодок', subtitle: 'По износу', status: 'overdue', lastKm: 35000, nextKm: 45000 },
-                { id: 4, title: '⚙️ Развал-схождение', subtitle: 'Каждые 20,000 км', status: 'never', lastKm: null, nextKm: null }
-            ];
-            
-            container.innerHTML = '';
-            
-            maintenanceItems.forEach(item => {
-                const element = document.createElement('div');
-                element.className = 'maintenance-item';
-                
-                let statusText = '';
-                switch (item.status) {
-                    case 'ok': statusText = 'В порядке'; break;
-                    case 'soon': statusText = 'Скоро'; break;
-                    case 'overdue': statusText = 'Просрочено'; break;
-                    case 'never': statusText = 'Не делали'; break;
-                }
-                
-                element.innerHTML = `
-                    <div class="maintenance-info">
-                        <div class="maintenance-title">${item.title}</div>
-                        <div class="maintenance-subtitle">${item.subtitle}</div>
-                    </div>
-                    <div class="maintenance-status ${item.status}">${statusText}</div>
-                `;
-                
-                container.appendChild(element);
-            });
-        }
-    }
-
-    setupEventListeners() {
-        // Навигация
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const page = e.currentTarget.dataset.page;
-                this.showPage(page);
-            });
-        });
-        
-        // Быстрые действия
-        document.getElementById('redeem-btn').addEventListener('click', () => this.showRedeemModal());
-        document.getElementById('analytics-btn').addEventListener('click', () => this.showAnalytics());
-        
-        // Модалы
-        document.getElementById('confirm-redeem').addEventListener('click', () => this.confirmRedeem());
-        
-        // Добавление ТО
-        document.getElementById('add-maintenance-btn').addEventListener('click', () => this.showAddMaintenanceForm());
-        
-        // Закрытие по клику вне модала
-        document.getElementById('modal-overlay').addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) {
-                this.closeModal();
-            }
-        });
-    }
-
-    showPage(pageName) {
-        // Скрываем все страницы
-        document.querySelectorAll('.page').forEach(page => {
-            page.classList.remove('active');
-        });
-        
-        // Убираем активный класс с навигации
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        // Показываем выбранную страницу
-        document.getElementById(`${pageName}-page`).classList.add('active');
-        document.querySelector(`[data-page="${pageName}"]`).classList.add('active');
-        
-        this.currentPage = pageName;
-        
-        // Специальная логика для разных страниц
-        if (pageName === 'booking') {
-            this.initBookingWizard();
-        }
-    }
-
-    showMainApp() {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-app').style.display = 'block';
-    }
-    
-    showAuthorizationPrompt() {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-app').innerHTML = `
-            <div style="padding: 40px 20px; text-align: center;">
-                <div style="font-size: 64px; margin-bottom: 24px;">🔐</div>
-                <h2 style="margin-bottom: 16px;">Требуется авторизация</h2>
-                <p style="color: var(--tg-theme-hint-color); margin-bottom: 32px;">
-                    Для доступа к приложению необходимо сначала авторизоваться в боте.
-                </p>
-                <p style="color: var(--tg-theme-hint-color); margin-bottom: 24px;">
-                    Перейдите в чат с ботом @tgmclientbot и выполните команду /start, поделившись номером телефона.
-                </p>
-                <button class="btn-primary" onclick="window.Telegram.WebApp.close()">
-                    Закрыть приложение
-                </button>
-            </div>
-        `;
-        document.getElementById('main-app').style.display = 'block';
-    }
-    
-    showPhoneAuthForm(authData) {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('main-app').innerHTML = `
-            <div style="padding: 40px 20px; text-align: center;">
-                <div style="font-size: 64px; margin-bottom: 24px;">📞</div>
-                <h2 style="margin-bottom: 16px;">Авторизация</h2>
-                <p style="color: var(--tg-theme-hint-color); margin-bottom: 32px;">
-                    Добро пожаловать, ${authData?.firstName || 'пользователь'}!<br>
-                    Для доступа к приложению введите номер телефона.
-                </p>
-                
-                <div id="phone-auth-form" style="max-width: 300px; margin: 0 auto;">
-                    <div style="margin-bottom: 24px; text-align: left;">
-                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Номер телефона:</label>
-                        <div style="display: flex; align-items: center; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
-                            <span style="padding: 12px; background: #f0f0f0; border-right: 1px solid #ddd; font-weight: 500;">+7</span>
-                            <input type="tel" id="user-phone-input" placeholder="999 255 60 31" 
-                                   maxlength="13"
-                                   style="flex: 1; padding: 12px; border: none; outline: none;">
+        return `
+            <div id="main-app">
+                <header class="header">
+                     <div class="header-content">
+                        <div class="user-info">
+                            <h2>${loyaltyData.name}</h2>
+                            <p>Уровень: ${loyaltyData.level}</p>
+                        </div>
+                        <div class="balance-badge">
+                            <span>${loyaltyData.balance}</span>
+                            <small>бонусов</small>
                         </div>
                     </div>
-                    
-                    <button class="btn-primary" onclick="loyaltyApp.authorizeByPhone()" style="width: 100%; margin-bottom: 16px;">
-                        Войти
-                    </button>
-                    
-                    <button class="btn-secondary" onclick="window.Telegram.WebApp.close()" style="width: 100%;">
-                        Отмена
-                    </button>
-                </div>
-                
-                <div id="auth-loading" style="display: none; padding: 20px;">
-                    <div style="font-size: 24px; margin-bottom: 16px;">⏳</div>
-                    <p>Авторизация...</p>
-                </div>
-                
-                <div style="margin-top: 32px; padding: 16px; background: var(--tg-theme-secondary-bg-color, #f0f0f0); border-radius: 8px; font-size: 14px; color: var(--tg-theme-hint-color);">
-                    <strong>Как это работает:</strong><br>
-                    • Если вы уже клиент - найдем ваш аккаунт<br>
-                    • Если новый клиент - создадим профиль<br>
-                    • Получите доступ ко всем бонусам
+                </header>
+                <main id="page-content">${this.renderPageContent()}</main>
+                <nav class="bottom-nav">
+                    <button data-action="navigate" data-page="dashboard" class="nav-btn ${page === 'dashboard' ? 'active' : ''}"><span class="icon">🏠</span><span>Главная</span></button>
+                    <button data-action="navigate" data-page="history" class="nav-btn ${page === 'history' ? 'active' : ''}"><span class="icon">📋</span><span>История</span></button>
+                    <button data-action="navigate" data-page="profile" class="nav-btn ${page === 'profile' ? 'active' : ''}"><span class="icon">👤</span><span>Профиль</span></button>
+                </nav>
+            </div>`;
+    }
+
+    renderPageContent() {
+        switch (this.state.page) {
+            case 'dashboard': return this.renderDashboard();
+            case 'history':   return this.renderHistory();
+            case 'profile':   return this.renderProfile();
+            default: return '';
+        }
+    }
+
+    renderDashboard() {
+        if (this.state.history === null) this.loadHistory();
+        const recentHistory = this.state.history?.slice(0, 5) || [];
+
+        return `
+            <div class="section">${this.renderLoyaltyCard()}</div>
+            <div class="section">
+                <div class="quick-actions">
+                    <button class="action-btn" data-action="show-placeholder"><span class="icon">🎁</span><span>Списать бонусы</span></button>
+                    <button class="action-btn" data-action="show-placeholder"><span class="icon">📅</span><span>Записаться</span></button>
                 </div>
             </div>
-        `;
-        document.getElementById('main-app').style.display = 'block';
-        
-        // Добавляем форматирование номера телефона
-        setTimeout(() => {
-            const phoneInput = document.getElementById('user-phone-input');
-            if (phoneInput) {
-                phoneInput.addEventListener('input', (e) => {
-                    let value = e.target.value.replace(/\D/g, '');
-                    
-                    // Ограничиваем до 10 цифр
-                    if (value.length > 10) value = value.slice(0, 10);
-                    
-                    // Форматируем как XXX XXX XX XX
-                    let formattedValue = '';
-                    if (value.length > 0) {
-                        formattedValue = value.slice(0, 3);
-                        if (value.length > 3) {
-                            formattedValue += ' ' + value.slice(3, 6);
-                        }
-                        if (value.length > 6) {
-                            formattedValue += ' ' + value.slice(6, 8);
-                        }
-                        if (value.length > 8) {
-                            formattedValue += ' ' + value.slice(8, 10);
-                        }
-                    }
-                    
-                    e.target.value = formattedValue;
-                });
-            }
-        }, 100);
+            <div class="section">
+                <div class="section-header">
+                    <h3>Последние операции</h3>
+                    <button class="view-all-btn" data-action="navigate" data-page="history">Все</button>
+                </div>
+                ${this.state.history === null ? '<div class="spinner"></div>' : this.renderHistoryList(recentHistory)}
+            </div>`;
     }
-    
-    showRegistrationForm() {
-        // Эта функция больше не используется, заменена на showPhoneAuthForm
-        this.showPhoneAuthForm({ firstName: 'пользователь' });
+
+    renderLoyaltyCard() {
+        const { loyaltyData } = this.state;
+        const levels = { Bronze: 0, Silver: 50000, Gold: 150000, Platinum: 300000 };
+        const nextLevel = Object.keys(levels).find(l => loyaltyData.totalSpent < levels[l]) || 'Diamond';
+        const progress = nextLevel !== 'Diamond' ? (loyaltyData.totalSpent / levels[nextLevel]) * 100 : 100;
+
+        return `
+        <div class="card loyalty-card">
+            <div class="card-header">
+                <h3>Карта лояльности</h3>
+                <span class="level-badge ${loyaltyData.level}">${loyaltyData.level}</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width: ${progress}%;"></div></div>
+            <div class="progress-info">
+                <span>${this.formatMoney(loyaltyData.totalSpent)} ₽</span>
+                <span>${nextLevel !== 'Diamond' ? `до ${nextLevel}` : 'Макс. уровень'}</span>
+            </div>
+        </div>`;
     }
-    
+
+    renderHistory() {
+        if (this.state.history === null) this.loadHistory();
+        return `
+            <div class="section">
+                <div class="section-header"><h3>История операций</h3></div>
+                ${this.state.history === null ? '<div class="spinner"></div>' : this.renderHistoryList(this.state.history)}
+            </div>`;
+    }
+
+    renderHistoryList(items) {
+        if (items.length === 0) {
+            return `<div class="empty-list-placeholder"><div class="icon">📂</div><p>Здесь пока пусто</p></div>`;
+        }
+        return items.map(item => {
+            const isPositive = item.type === 'accrual' || item.type === 'visit';
+            const icon = item.type === 'accrual' ? '➕' : item.type === 'redemption' ? '➖' : '🛒';
+            const amountText = `${isPositive ? '+' : '-'}${this.formatMoney(Math.abs(item.amount))}`;
+            return `
+            <div class="list-item">
+                <div class="item-icon">${icon}</div>
+                <div class="item-info">
+                    <div class="title">${item.title}</div>
+                    <div class="subtitle">${this.formatDate(item.date)}</div>
+                </div>
+                <div class="item-amount ${isPositive ? 'positive' : 'negative'}">${amountText}</div>
+            </div>`;
+        }).join('');
+    }
+
+    renderProfile() {
+        const { loyaltyData } = this.state;
+        return `
+            <div class="section">
+                <div class="section-header"><h3>Статистика</h3></div>
+                <div class="profile-stats">
+                    <div class="stat-card"><div class="stat-value">${loyaltyData.totalVisits || 0}</div><div class="stat-label">Визитов</div></div>
+                    <div class="stat-card"><div class="stat-value">${this.formatMoney(loyaltyData.averageCheck)}</div><div class="stat-label">Средний чек</div></div>
+                    <div class="stat-card"><div class="stat-value">${this.formatMoney(loyaltyData.totalSpent)}</div><div class="stat-label">Потрачено</div></div>
+                    <div class="stat-card"><div class="stat-value">${this.formatMoney(loyaltyData.totalEarned)}</div><div class="stat-label">Накоплено</div></div>
+                </div>
+            </div>`;
+    }
+
+// =================================================================
+    // 3. EVENT HANDLING
+    // =================================================================
+
+    attachEventListeners() {
+        this.appContainer.addEventListener('click', this.handleAction.bind(this));
+        this.appContainer.addEventListener('input', this.handleAction.bind(this));
+        this.tg.BackButton.onClick(() => this.navigate('dashboard'));
+    }
+
+    handleAction(event) {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        event.preventDefault();
+        const { action, page } = target.dataset;
+        switch (action) {
+            case 'navigate':
+                this.navigate(page);
+                break;
+            case 'auth-by-phone':
+                this.authorizeByPhone();
+                break;
+            case 'format-phone':
+                this.formatPhoneNumber(event);
+                break;
+            case 'show-placeholder':
+                this.tg.showAlert('Функция в разработке.');
+                break;
+        }
+    }
+
+    // =================================================================
+    // 4. API CALLS & ACTIONS
+    // =================================================================
+
+    navigate(page) {
+        this.setState({ page });
+    }
+
     async authorizeByPhone() {
-        const phoneValue = document.getElementById('user-phone-input').value.trim();
-        
-        if (!phoneValue) {
-            this.tg.showAlert('Пожалуйста, введите номер телефона');
-            return;
-        }
-        
-        // Убираем все нецифровые символы
-        const phoneDigits = phoneValue.replace(/\D/g, '');
-        
-        // Проверяем длину (должно быть 10 цифр)
-        if (phoneDigits.length !== 10) {
-            this.tg.showAlert('Введите номер телефона в формате: 999 255 60 31 (10 цифр)');
-            return;
-        }
-        
-        // Добавляем префикс +7
-        const fullPhone = '+7' + phoneDigits;
-        
+        const phoneInput = document.getElementById('user-phone-input');
+        const phoneDigits = phoneInput.value.replace(/\D/g, '');
+        if (phoneDigits.length !== 10) return this.tg.showAlert('Введите корректный 10-значный номер телефона.');
+
+        this.setState({ status: 'loading' });
         try {
-            document.getElementById('phone-auth-form').style.display = 'none';
-            document.getElementById('auth-loading').style.display = 'block';
-            
-            const response = await fetch('/api/auth-phone', {
+            const result = await this.fetchAPI('/api/auth-phone', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    initData: this.tg.initData || '',
-                    phone: fullPhone,
-                    user: this.tg.initDataUnsafe?.user || null
-                })
+                body: { phone: '+7' + phoneDigits, user: this.state.userData, initData: this.tg.initData }
             });
-            
-            const result = await response.json();
-            
-            if (response.ok && result.success) {
-                // Сохраняем данные пользователя
-                this.userLoyaltyData = result.user;
-                // Также сохраняем userData для совместимости
-                this.userData = this.tg.initDataUnsafe?.user || { id: result.user.id };
-                
-                // Показываем уведомление
-                const message = result.user.isNewUser 
-                    ? `Добро пожаловать!\n\n🎉 Вы зарегистрированы в системе лояльности\n💰 Начислено 100 приветственных бонусов!`
-                    : `Добро пожаловать!\n\n✅ Авторизация успешна\n💰 Ваш баланс: ${this.formatMoney(result.user.balance)}`;
-                
-                this.tg.showAlert(message);
-                
-                // Переключаемся на главный экран
-                document.getElementById('auth-container').style.display = 'none';
-                document.getElementById('main-app').style.display = 'block';
-                
-                // Перестраиваем интерфейс
-                this.updateUserInterface();
-                
-                // Устанавливаем обработчики событий
-                this.setupEventListeners();
-                
-                // Загружаем данные
-                setTimeout(() => {
-                    this.updateLoyaltyCard();
-                    this.loadRecentTransactions();
-                    this.loadVisitHistory();
-                    this.loadMaintenanceData();
-                }, 500);
-            } else {
-                throw new Error(result.message || 'Ошибка авторизации');
-            }
-            
+            // СНАЧАЛА меняем состояние, ПОТОМ показываем уведомление
+            this.setState({ status: 'ready', loyaltyData: result.user });
+            this.tg.showAlert(result.message);
         } catch (error) {
-            console.error('Authorization error:', error);
-            document.getElementById('phone-auth-form').style.display = 'block';
-            document.getElementById('auth-loading').style.display = 'none';
-            this.tg.showAlert(`Ошибка авторизации: ${error.message}`);
-        }
-    }
-    
-    async registerUser() {
-        // Метод оставлен для совместимости, но больше не используется
-        this.tg.showAlert('Используйте авторизацию по номеру телефона');
-    }
-
-    showRedeemModal() {
-        // Проверяем возможность списания
-        const lastVisitAmount = 8500; // Демо данные
-        const maxRedeem = Math.min(this.userLoyaltyData.balance, lastVisitAmount * 0.3);
-        
-        document.getElementById('available-redeem').textContent = this.formatMoney(maxRedeem);
-        document.getElementById('last-check-amount').textContent = this.formatMoney(lastVisitAmount);
-        
-        document.getElementById('modal-overlay').classList.add('show');
-    }
-
-    closeModal() {
-        document.getElementById('modal-overlay').classList.remove('show');
-    }
-
-    async confirmRedeem() {
-        const availableAmount = parseInt(document.getElementById('available-redeem').textContent.replace(/[^\d]/g, ''));
-        
-        if (availableAmount > 0) {
-            try {
-                this.showLoading('Списание бонусов...');
-                
-                const response = await fetch('/api/redeem', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        userId: this.userLoyaltyData?.id || this.userData?.id,
-                        amount: availableAmount,
-                        description: `Списание ${availableAmount} бонусов через Mini App`
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok && result.success) {
-                    // Обновляем баланс из ответа сервера
-                    this.userLoyaltyData.balance = result.newBalance;
-                    this.userLoyaltyData.totalRedeemed += availableAmount;
-                    
-                    this.updateUserInterface();
-                    this.closeModal();
-                    
-                    this.tg.showAlert(result.message || `Успешно списано ${this.formatMoney(availableAmount)} бонусов!`);
-                } else {
-                    throw new Error(result.message || 'Ошибка при списании бонусов');
-                }
-                
-            } catch (error) {
-                console.error('Error redeeming bonuses:', error);
-                this.tg.showAlert(`Ошибка: ${error.message}`);
-            }
+            this.setState({ status: 'auth_required', error: error.message });
         }
     }
 
-    showAnalytics() {
-        this.tg.showAlert('Аналитика временно недоступна. Эта функция будет добавлена в следующем обновлении.');
+    async loadHistory() {
+        try {
+            const [transactions, visits] = await Promise.all([
+                this.fetchAPI(`/api/transactions/${this.state.loyaltyData.id}`),
+                this.fetchAPI(`/api/visits/${this.state.loyaltyData.id}`)
+            ]);
+            const history = [
+                ...transactions.map(t => ({...t, type: t.type, amount: t.amount, title: t.description})),
+                ...visits.map(v => ({...v, type: 'visit', amount: v.bonusEarned, title: v.title}))
+            ].sort((a, b) => new Date(b.date) - new Date(a.date));
+            this.setState({ history });
+        } catch (error) {
+            console.error('History loading error:', error);
+            this.setState({ history: [] }); // Set to empty array on error to prevent re-fetching
+        }
     }
 
-    showAddMaintenanceForm() {
-        this.tg.showAlert('Функция добавления записей о ТО будет доступна в следующем обновлении.');
+    async fetchAPI(url, options = {}) {
+        if (options.body) {
+            options.headers = { ...options.headers, 'Content-Type': 'application/json' };
+            options.body = JSON.stringify(options.body);
+        }
+        const response = await fetch(url, options);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Произошла ошибка');
+        return data;
     }
 
-    initBookingWizard() {
-        // Инициализация мастера бронирования
-        document.getElementById('booking-content').innerHTML = `
-            <div style="text-align: center; padding: 40px 20px;">
-                <div style="font-size: 48px; margin-bottom: 16px;">📅</div>
-                <h3 style="margin-bottom: 16px;">Онлайн запись</h3>
-                <p style="color: var(--tg-theme-hint-color); margin-bottom: 24px;">
-                    Выберите услугу, мастера и удобное время для визита
-                </p>
-                <button class="btn-primary" onclick="loyaltyApp.startBookingProcess()">
-                    Начать запись
-                </button>
-            </div>
-        `;
+    // =================================================================
+    // 5. HELPERS
+    // =================================================================
+
+    applyTelegramTheme() {
+        Object.entries(this.tg.themeParams).forEach(([key, value]) => {
+            document.documentElement.style.setProperty(`--tg-theme-${key.replace(/_/g, '-')}`, value);
+        });
     }
 
-    startBookingProcess() {
-        this.tg.showAlert('Система онлайн записи будет доступна в следующем обновлении.');
-    }
-
-    showVisitDetails(visit) {
-        this.tg.showAlert(`Детали визита:\n\n${visit.title}\nСумма: ${this.formatMoney(visit.amount)}\nДата: ${this.formatDate(visit.date)}\nУслуги: ${visit.services.join(', ')}`);
-    }
-
-    showLoading(message = 'Загрузка...') {
-        // Здесь можно показать индикатор загрузки
-        console.log(message);
-    }
-
-    showError(message) {
-        this.tg.showAlert(`Ошибка: ${message}`);
-    }
-
-    formatMoney(amount) {
-        return new Intl.NumberFormat('ru-RU', {
-            style: 'currency',
-            currency: 'RUB',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
-        }).format(amount);
+    formatMoney(amount, currency = 'RUB') {
+        return new Intl.NumberFormat('ru-RU', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0);
     }
 
     formatDate(dateString) {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ru-RU', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
+        return new Date(dateString).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
     }
 
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    formatPhoneNumber(event) {
+        let input = event.target.value.replace(/\D/g, '');
+        if (input.length > 10) input = input.substring(0, 10);
+        let formatted = '';
+        if (input.length > 0) formatted += input.substring(0, 3);
+        if (input.length > 3) formatted += ` ${input.substring(3, 6)}`;
+        if (input.length > 6) formatted += `-${input.substring(6, 8)}`;
+        if (input.length > 8) formatted += `-${input.substring(8, 10)}`;
+        event.target.value = formatted;
     }
 }
 
-// Глобальные функции для HTML
-function showPage(pageName) {
-    window.loyaltyApp.showPage(pageName);
-}
-
-function closeModal() {
-    window.loyaltyApp.closeModal();
-}
-
-// Инициализация приложения
-window.loyaltyApp = new LoyaltyApp();
-
-// Дополнительные обработчики для Telegram WebApp
-window.Telegram.WebApp.onEvent('viewportChanged', () => {
-    console.log('Viewport changed');
-});
-
-window.Telegram.WebApp.onEvent('themeChanged', () => {
-    window.loyaltyApp.applyTelegramTheme();
-});
-
-// Обработка кнопки "Назад" в Telegram
-window.Telegram.WebApp.BackButton.onClick(() => {
-    if (window.loyaltyApp.currentPage !== 'dashboard') {
-        window.loyaltyApp.showPage('dashboard');
-    } else {
-        window.Telegram.WebApp.close();
-    }
-});
-
-// Показываем кнопку "Назад" когда не на главной странице
-document.addEventListener('DOMContentLoaded', () => {
-    const observer = new MutationObserver(() => {
-        if (window.loyaltyApp && window.loyaltyApp.currentPage !== 'dashboard') {
-            window.Telegram.WebApp.BackButton.show();
-        } else {
-            window.Telegram.WebApp.BackButton.hide();
-        }
-    });
-    
-    observer.observe(document.body, { childList: true, subtree: true });
-});
+document.addEventListener('DOMContentLoaded', () => new LoyaltyApp());

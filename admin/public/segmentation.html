@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сегментация клиентов - Админ панель</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .segment-card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            height: 100%;
+        }
+        .segment-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+        }
+        .segment-badge {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 15px;
+        }
+        .rfm-score {
+            display: inline-block;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            color: white;
+            text-align: center;
+            line-height: 25px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin: 0 2px;
+        }
+        .score-1 { background-color: #dc3545; }
+        .score-2 { background-color: #fd7e14; }
+        .score-3 { background-color: #ffc107; color: black; }
+        .score-4 { background-color: #28a745; }
+        .score-5 { background-color: #20c997; }
+        
+        .activity-active { color: #28a745; }
+        .activity-declining { color: #ffc107; }
+        .activity-inactive { color: #fd7e14; }
+        .activity-lost { color: #dc3545; }
+        
+        .growth-high { color: #20c997; }
+        .growth-medium { color: #28a745; }
+        .growth-stable { color: #6c757d; }
+        .growth-low { color: #fd7e14; }
+        .growth-unknown { color: #adb5bd; }
+        
+        .stats-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #495057;
+        }
+        .loading {
+            text-align: center;
+            padding: 3rem;
+        }
+        .table-sm th, .table-sm td {
+            padding: 0.5rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Заголовок -->
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center py-3">
+                    <div>
+                        <h2><i class="bi bi-pie-chart-fill me-2"></i>RFM Сегментация клиентов</h2>
+                        <p class="text-muted">Анализ клиентской базы по активности, частоте и объему покупок</p>
+                    </div>
+                    <div>
+                        <a href="rfm-guide.html" class="btn btn-info me-2">
+                            <i class="bi bi-question-circle me-2"></i>Справка по RFM
+                        </a>
+                        <button class="btn btn-primary" onclick="refreshSegmentation()">
+                            <i class="bi bi-arrow-clockwise me-2"></i>Обновить
+                        </button>
+                        <a href="/" class="btn btn-outline-secondary">
+                            <i class="bi bi-house me-2"></i>Главная
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Общая статистика -->
+        <div class="row mb-4" id="overallStats">
+            <div class="col-md-3">
+                <div class="card segment-card bg-primary text-white">
+                    <div class="card-body text-center">
+                        <div class="stats-number" id="totalCustomers">-</div>
+                        <div>Всего клиентов</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card segment-card bg-success text-white">
+                    <div class="card-body text-center">
+                        <div class="stats-number" id="activeCustomers">-</div>
+                        <div>Активных клиентов</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card segment-card bg-info text-white">
+                    <div class="card-body text-center">
+                        <div class="stats-number" id="totalRevenue">-</div>
+                        <div>Общая выручка</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card segment-card bg-warning text-white">
+                    <div class="card-body text-center">
+                        <div class="stats-number" id="avgOrderValue">-</div>
+                        <div>Средний чек</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Сегменты -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">🎯 Распределение по сегментам</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row" id="segmentsContainer">
+                            <div class="loading">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Загрузка...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Графики -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card segment-card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Распределение по сегментам</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="segmentsChart" width="400" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card segment-card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Статус активности</h6>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="activityChart" width="400" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Таблица клиентов с фильтрами -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">👥 Клиенты по сегментам</h5>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm" id="segmentFilter" onchange="filterCustomers()">
+                                    <option value="">Все сегменты</option>
+                                </select>
+                                <select class="form-select form-select-sm" id="activityFilter" onchange="filterCustomers()">
+                                    <option value="">Вся активность</option>
+option value="Active"Активные/option
+option value="Declining"Снижающиеся/option
+option value="Inactive"Неактивные/option
+option value="Lost"Потерянные/option
+                                </select>
+                                <input type="text" class="form-control form-control-sm" id="searchInput" 
+                                       placeholder="Поиск..." onkeyup="filterCustomers()">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Клиент</th>
+                                        <th>Телефон</th>
+                                        <th>Сегмент</th>
+                                        <th>RFM</th>
+                                        <th>Активность</th>
+                                        <th>Выручка</th>
+                                        <th>Покупок</th>
+                                        <th>Последняя покупка</th>
+                                        <th>Потенциал</th>
+                                        <th>Бонусы</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customersTable">
+                                    <tr>
+                                        <td colspan="10" class="text-center">
+                                            <div class="spinner-border" role="status">
+                                                <span class="visually-hidden">Загрузка...</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <nav aria-label="Pagination">
+                            <ul class="pagination justify-content-center" id="pagination"></ul>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="client-modal.js"></script>
+    <script>
+        let allCustomers = [];
+        let filteredCustomers = [];
+        let currentPage = 1;
+        const itemsPerPage = 20;
+
+        // Форматирование валюты
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('ru-RU', {
+                style: 'currency',
+                currency: 'RUB',
+                minimumFractionDigits: 0
+            }).format(amount / 100);
+        }
+
+        // Форматирование даты
+        function formatDate(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ru-RU');
+        }
+
+        // Перевод статусов активности
+        function translateActivityStatus(status) {
+            const translations = {
+                'Active': 'Активные',
+                'Declining': 'Снижающиеся',
+                'Inactive': 'Неактивные',
+                'Lost': 'Потерянные'
+            };
+            return translations[status] || status;
+        }
+
+        // Загрузка данных сегментации
+        async function loadSegmentationData() {
+            try {
+                const response = await fetch('/api/customer-segments');
+                const data = await response.json();
+                
+                allCustomers = data.customers || [];
+                filteredCustomers = [...allCustomers];
+                
+                displayOverallStats(data.stats);
+                displaySegments(data.segments);
+                displayCharts(data.segments, data.activity);
+                populateFilters();
+                displayCustomers();
+                
+            } catch (error) {
+                console.error('Ошибка загрузки данных:', error);
+                showError('Ошибка загрузки данных сегментации');
+            }
+        }
+
+        // Отображение общей статистики
+        function displayOverallStats(stats) {
+            document.getElementById('totalCustomers').textContent = stats.total_customers.toLocaleString();
+            document.getElementById('activeCustomers').textContent = stats.active_customers.toLocaleString();
+            document.getElementById('totalRevenue').textContent = formatMoney(stats.total_revenue);
+            document.getElementById('avgOrderValue').textContent = formatMoney(stats.avg_order_value);
+        }
+
+        // Отображение сегментов
+        function displaySegments(segments) {
+            const container = document.getElementById('segmentsContainer');
+            
+            const segmentCards = Object.entries(segments).map(([name, data]) => `
+                <div class="col-md-4 col-lg-3 mb-3">
+                    <div class="card segment-card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title text-truncate" title="${name}">${name}</h6>
+                            <div class="mb-2">
+                                <span class="badge bg-primary">${data.customers_count} клиентов</span>
+                                <span class="badge bg-success">${data.percentage}%</span>
+                            </div>
+                            <div class="text-muted small">
+                                <div>Выручка: ${formatMoney(data.total_revenue)}</div>
+                                <div>Ср. чек: ${formatMoney(data.avg_revenue)}</div>
+                                <div>Ср. частота: ${data.avg_frequency.toFixed(1)}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = segmentCards;
+        }
+
+        // Отображение графиков
+        function displayCharts(segments, activity) {
+            // График сегментов
+            const segmentsCtx = document.getElementById('segmentsChart').getContext('2d');
+            new Chart(segmentsCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(segments),
+                    datasets: [{
+                        data: Object.values(segments).map(s => s.customers_count),
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                            '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+                            '#4BC0C0', '#FF6384'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // График активности
+            const activityCtx = document.getElementById('activityChart').getContext('2d');
+            new Chart(activityCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(activity),
+                    datasets: [{
+                        label: 'Клиенты',
+                        data: Object.values(activity),
+                        backgroundColor: ['#28a745', '#ffc107', '#fd7e14', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // Заполнение фильтров
+        function populateFilters() {
+            const segmentFilter = document.getElementById('segmentFilter');
+            const segments = [...new Set(allCustomers.map(c => c.segment))].sort();
+            
+            segments.forEach(segment => {
+                const option = document.createElement('option');
+                option.value = segment;
+                option.textContent = segment;
+                segmentFilter.appendChild(option);
+            });
+        }
+
+        // Фильтрация клиентов
+        function filterCustomers() {
+            const segmentFilter = document.getElementById('segmentFilter').value;
+            const activityFilter = document.getElementById('activityFilter').value;
+            const searchInput = document.getElementById('searchInput').value.toLowerCase();
+
+            filteredCustomers = allCustomers.filter(customer => {
+                const matchesSegment = !segmentFilter || customer.segment === segmentFilter;
+                const matchesActivity = !activityFilter || customer.activity_status === activityFilter;
+                const matchesSearch = !searchInput || 
+                    customer.customer_name.toLowerCase().includes(searchInput) ||
+                    customer.phone.includes(searchInput);
+                
+                return matchesSegment && matchesActivity && matchesSearch;
+            });
+
+            currentPage = 1;
+            displayCustomers();
+        }
+
+        // Отображение клиентов
+        function displayCustomers() {
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const pageCustomers = filteredCustomers.slice(startIndex, endIndex);
+
+            const tbody = document.getElementById('customersTable');
+            
+            if (pageCustomers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center">Клиенты не найдены</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = pageCustomers.map(customer => `
+                <tr>
+                    <td>
+                        <div class="fw-bold">
+                            <a href="#" class="text-decoration-none" onclick="clientModal.show('${customer.agent_id}'); return false;">
+                                ${customer.customer_name}
+                            </a>
+                        </div>
+                        ${customer.is_registered ? '<small class="badge bg-success">В боте</small>' : '<small class="text-muted">Не зарегистрирован</small>'}
+                    </td>
+                    <td>${customer.phone || '-'}</td>
+                    <td><span class="segment-badge badge bg-secondary">${customer.segment}</span></td>
+                    <td>
+                        <span class="rfm-score score-${customer.R_score}">${customer.R_score}</span>
+                        <span class="rfm-score score-${customer.F_score}">${customer.F_score}</span>
+                        <span class="rfm-score score-${customer.M_score}">${customer.M_score}</span>
+                    </td>
+                    <td>
+                        <span class="activity-${customer.activity_status.toLowerCase()}">
+                            ${translateActivityStatus(customer.activity_status)}
+                        </span>
+                        <br><small class="text-muted">${customer.recency_days} дн. назад</small>
+                    </td>
+                    <td>${formatMoney(customer.monetary_total)}</td>
+                    <td>${customer.frequency}</td>
+                    <td>${formatDate(customer.last_purchase_date)}</td>
+                    <td>
+                        <span class="growth-${customer.growth_potential.toLowerCase()}">
+                            ${customer.growth_potential}
+                        </span>
+                    </td>
+                    <td>${formatMoney(customer.bonus_balance)}</td>
+                </tr>
+            `).join('');
+
+            displayPagination();
+        }
+
+        // Пагинация
+        function displayPagination() {
+            const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+            const pagination = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+
+            let paginationHTML = '';
+            
+            // Предыдущая страница
+            paginationHTML += `
+                <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">Назад</a>
+                </li>
+            `;
+            
+            // Номера страниц
+            for (let i = Math.max(1, currentPage - 2); i <= Math.min(totalPages, currentPage + 2); i++) {
+                paginationHTML += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+                    </li>
+                `;
+            }
+            
+            // Следующая страница
+            paginationHTML += `
+                <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">Далее</a>
+                </li>
+            `;
+            
+            pagination.innerHTML = paginationHTML;
+        }
+
+        // Смена страницы
+        function changePage(page) {
+            const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+            if (page < 1 || page > totalPages) return;
+            
+            currentPage = page;
+            displayCustomers();
+        }
+
+        // Обновление сегментации
+        async function refreshSegmentation() {
+            try {
+                const response = await fetch('/api/refresh-segmentation', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('Сегментация обновлена успешно!');
+                    location.reload();
+                } else {
+                    alert('Ошибка обновления сегментации');
+                }
+            } catch (error) {
+                console.error('Ошибка обновления:', error);
+                alert('Ошибка обновления сегментации');
+            }
+        }
+
+        // Показать ошибку
+        function showError(message) {
+            const container = document.getElementById('segmentsContainer');
+            container.innerHTML = `<div class="alert alert-danger">${message}</div>`;
+        }
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', loadSegmentationData);
+    </script>
+</body>
+</html>

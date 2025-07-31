@@ -6,7 +6,7 @@
     <title>Админ панель - Система лояльности</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <style>
         .sidebar {
             min-height: 100vh;
@@ -55,6 +55,13 @@
         .search-box {
             max-width: 300px;
         }
+        .bi-spin {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -73,11 +80,23 @@
                     <a class="nav-link" href="#" onclick="showSection('users')">
                         <i class="bi bi-people me-2"></i>Пользователи
                     </a>
+                    <a class="nav-link" href="contractors.html" target="_blank">
+                        <i class="bi bi-building me-2"></i>Все контрагенты
+                    </a>
+                    <a class="nav-link" href="segmentation.html" target="_blank">
+                        <i class="bi bi-pie-chart-fill me-2"></i>RFM Анализ клиентов
+                    </a>
+                    <a class="nav-link" href="#" onclick="showSection('call-queues')">
+                        <i class="bi bi-telephone-fill me-2"></i>Линии звонков
+                    </a>
                     <a class="nav-link" href="#" onclick="showSection('transactions')">
                         <i class="bi bi-receipt me-2"></i>Транзакции
                     </a>
                     <a class="nav-link" href="#" onclick="showSection('analytics')">
                         <i class="bi bi-graph-up me-2"></i>Аналитика
+                    </a>
+                    <a class="nav-link" href="#" onclick="showSection('customer-analytics')">
+                        <i class="bi bi-people-fill me-2"></i>Клиенты по месяцам
                     </a>
                     <a class="nav-link" href="#" onclick="exportUsers()">
                         <i class="bi bi-download me-2"></i>Экспорт данных
@@ -222,6 +241,284 @@
                     </div>
                 </div>
 
+                <!-- Очереди обзвона -->
+                <div id="call-queues-section" style="display: none;">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h2>📞 Очереди обзвона</h2>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-success" onclick="updateCallQueues()">
+                                <i class="bi bi-arrow-repeat me-2" id="refresh-icon"></i>Обновить очереди
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Статус системы -->
+                    <div class="alert alert-success" role="alert" id="queue-status">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        <strong>Очереди готовы к работе!</strong> Нужна ли дополнительная настройка или анализ?
+                    </div>
+
+                    <!-- Статистика очередей -->
+                    <div class="row mb-4" id="queue-stats">
+                        <div class="col-md-3">
+                            <div class="card stats-card border-danger queue-card" data-queue="Reactivation-High" style="cursor: pointer;">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-star-fill text-danger fs-1"></i>
+                                    <h3 class="mt-2 text-danger" id="count-reactivation">-</h3>
+                                    <p class="text-muted mb-0">Reactivation-High</p>
+                                    <small class="text-muted" id="avg-reactivation">Загрузка...</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card stats-card border-warning queue-card" data-queue="Pre-TO" style="cursor: pointer;">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-gear-fill text-warning fs-1"></i>
+                                    <h3 class="mt-2 text-warning" id="count-preto">-</h3>
+                                    <p class="text-muted mb-0">Pre-ТО</p>
+                                    <small class="text-muted" id="avg-preto">Загрузка...</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card stats-card border-success queue-card" data-queue="VIP-Frequent" style="cursor: pointer;">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-crown-fill text-success fs-1"></i>
+                                    <h3 class="mt-2 text-success" id="count-vip">-</h3>
+                                    <p class="text-muted mb-0">VIP-Frequent</p>
+                                    <small class="text-muted" id="avg-vip">Загрузка...</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card stats-card border-info queue-card" data-queue="Data-Poor" style="cursor: pointer;">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-question-circle-fill text-info fs-1"></i>
+                                    <h3 class="mt-2 text-info" id="count-datapoor">-</h3>
+                                    <p class="text-muted mb-0">Data-Poor</p>
+                                    <small class="text-muted" id="avg-datapoor">Загрузка...</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Список клиентов из выбранной очереди -->
+                    <div id="queue-customers-section" style="display: none;">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><span id="selected-queue-name"></span> - Список клиентов</h5>
+                                <div>
+                                    <button class="btn btn-success me-2" onclick="showQueueBroadcastModal()">
+                                        <i class="bi bi-broadcast"></i> Массовая рассылка
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="hideQueueCustomers()">
+                                        <i class="bi bi-arrow-left"></i> Назад к очередям
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Имя</th>
+                                                <th>Телефон</th>
+                                                <th>Средний чек</th>
+                                                <th>Выручка</th>
+                                                <th>Давность</th>
+                                                <th>Бонусы</th>
+                                                <th>Последний контакт</th>
+                                                <th>Действия</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="queue-customers-table">
+                                            <tr>
+                                                <td colspan="8" class="text-center">
+                                                    <div class="spinner-border" role="status">
+                                                        <span class="visually-hidden">Загрузка...</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <nav aria-label="Pagination">
+                                    <ul class="pagination justify-content-center" id="queue-customers-pagination">
+                                    </ul>
+                                </nav>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Детальная информация по очередям -->
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-danger text-white">
+                                    <h6 class="mb-0"><i class="bi bi-star-fill me-2"></i>Reactivation-High (Приоритет 2)</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <strong>Критерии:</strong> R > 180 дней, F ≥ 2 или M ≥ 10,000 ₽
+                                    </div>
+                                    <div class="mb-3">
+                                        <strong>Оффер:</strong> Диагностика ходовой/тормозов бесплатно при записи на будни
+                                    </div>
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-danger mb-0">235</div>
+                                                <small class="text-muted">Клиентов</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-danger mb-0">3.39M</div>
+                                                <small class="text-muted">Выручка</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="h5 text-danger mb-0">~319</div>
+                                            <small class="text-muted">Ср. давность</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-success text-white">
+                                    <h6 class="mb-0"><i class="bi bi-crown-fill me-2"></i>VIP-Frequent (Приоритет 1)</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <strong>Критерии:</strong> R ≤ 90 дней, F ≥ 3, M ≥ 15,000 ₽
+                                    </div>
+                                    <div class="mb-3">
+                                        <strong>Оффер:</strong> Бесплатная компьютерная диагностика и приоритетный слот
+                                    </div>
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-success mb-0">83</div>
+                                                <small class="text-muted">Клиентов</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-success mb-0">3.93M</div>
+                                                <small class="text-muted">Выручка</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="h5 text-success mb-0">~40</div>
+                                            <small class="text-muted">Ср. давность</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-warning text-dark">
+                                    <h6 class="mb-0"><i class="bi bi-gear-fill me-2"></i>Pre-ТО (Приоритет 3)</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <strong>Критерии:</strong> 6 месяцев с последней замены масла/жидкости
+                                    </div>
+                                    <div class="mb-3">
+                                        <strong>Оффер:</strong> Пакет ТО с подарком
+                                    </div>
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-warning mb-0">4</div>
+                                                <small class="text-muted">Клиентов</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-warning mb-0">83.5K</div>
+                                                <small class="text-muted">Выручка</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="h5 text-warning mb-0">85</div>
+                                            <small class="text-muted">Ср. давность</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header bg-info text-white">
+                                    <h6 class="mb-0"><i class="bi bi-question-circle-fill me-2"></i>Data-Poor (Приоритет 4)</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <strong>Критерии:</strong> Отсутствует пробег/марка или неполные данные
+                                    </div>
+                                    <div class="mb-3">
+                                        <strong>Цель:</strong> Обогатить данные и перевести в Telegram-бот
+                                    </div>
+                                    <div class="row text-center">
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-info mb-0">1,600</div>
+                                                <small class="text-muted">Клиентов</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="border-end">
+                                                <div class="h5 text-info mb-0">18.2M</div>
+                                                <small class="text-muted">Выручка</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <div class="h5 text-info mb-0">~205</div>
+                                            <small class="text-muted">Ср. давность</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Инструкции -->
+                    <div class="card mt-4">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="bi bi-info-circle-fill me-2"></i>Инструкции по работе с очередями</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>🎯 Приоритеты обзвона:</h6>
+                                    <ol>
+                                        <li><strong>VIP-Frequent</strong> - самые прибыльные и активные клиенты</li>
+                                        <li><strong>Reactivation-High</strong> - большой потенциал возврата</li>
+                                        <li><strong>Pre-ТО</strong> - небольшая, но важная группа</li>
+                                        <li><strong>Data-Poor</strong> - для обогащения базы данных</li>
+                                    </ol>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>📋 Политика контактов:</h6>
+                                    <ul>
+                                        <li>Лимит: 1 звонок в 14 дней</li>
+                                        <li>Поддержка тега DNC (Do Not Call)</li>
+                                        <li>Учёт истории контактов</li>
+                                        <li>Автоматическое обновление очередей</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Аналитика -->
                 <div id="analytics-section" style="display: none;">
                     <h2 class="mb-4">Аналитика</h2>
@@ -242,6 +539,193 @@
                         </div>
                         <div class="card-body">
                             <canvas id="dailyAnalyticsChart" style="height: 400px;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Аналитика клиентов по месяцам -->
+                <div id="customer-analytics-section" style="display: none;">
+                    <h2 class="mb-4">📊 Аналитика клиентов по месяцам</h2>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <select class="form-select" id="customerAnalyticsPeriod" onchange="loadCustomerAnalytics()">
+                                <option value="6">6 месяцев</option>
+                                <option value="12" selected>12 месяцев</option>
+                                <option value="24">24 месяца</option>
+                                <option value="36">36 месяцев</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-success" onclick="loadCustomerAnalytics()">
+                                <i class="bi bi-arrow-repeat me-2"></i>Обновить данные
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Сводка за текущий период -->
+                    <div class="row mb-4" id="customer-summary-cards">
+                        <div class="loading">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Загрузка...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- График новых vs существующих клиентов -->
+                    <div class="row mb-4">
+                        <div class="col-md-8">
+                            <div class="card stats-card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">📈 Динамика клиентов по месяцам</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="customerDynamicsChart" style="height: 350px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card stats-card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">🥧 Соотношение типов клиентов</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="customerTypesChart" style="height: 350px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- График выручки -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card stats-card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">💰 Выручка от новых и существующих клиентов</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="customerRevenueChart" style="height: 300px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Таблица с детальными данными -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">📋 Детальные данные по месяцам</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover" id="customer-analytics-table">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Месяц</th>
+                                            <th>Новые клиенты</th>
+                                            <th>Выручка от новых</th>
+                                            <th>Существующие клиенты</th>
+                                            <th>Выручка от существующих</th>
+                                            <th>Всего клиентов</th>
+                                            <th>Общая выручка</th>
+                                            <th>% новых клиентов</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="customerAnalyticsTable">
+                                        <tr>
+                                            <td colspan="8" class="text-center">
+                                                <div class="spinner-border" role="status">
+                                                    <span class="visually-hidden">Загрузка...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Прогнозирование -->
+                    <div class="analytics-section mt-4">
+                        <h3>🔮 Прогнозирование на будущие месяцы</h3>
+                        <div class="forecast-controls mb-3">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <label for="forecast-months" class="form-label">
+                                        Период прогноза:
+                                    </label>
+                                    <select id="forecast-months" class="form-select">
+                                        <option value="3" selected>3 месяца</option>
+                                        <option value="6">6 месяцев</option>
+                                        <option value="12">12 месяцев</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button onclick="loadForecast()" class="btn btn-primary d-block">
+                                        <i class="bi bi-graph-up me-2"></i>Построить прогноз
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="forecast-info" class="alert alert-info" style="display: none;">
+                            <h5>💡 О прогнозе</h5>
+                            <p><strong>Алгоритм:</strong> <span id="forecast-algorithm"></span></p>
+                            <p class="mb-0">
+                                <strong>Принцип работы:</strong> Прогноз строится на основе анализа трендов исторических данных 
+                                с учетом сезонности. Уверенность прогноза снижается с увеличением периода.
+                            </p>
+                        </div>
+                        
+                        <div class="forecast-charts" id="forecast-charts" style="display: none;">
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <div class="card stats-card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">📊 Прогноз количества клиентов</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <canvas id="forecast-customers-chart" style="height: 300px;"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="card stats-card">
+                                        <div class="card-header">
+                                            <h6 class="mb-0">💰 Прогноз выручки</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <canvas id="forecast-revenue-chart" style="height: 300px;"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div id="forecast-table" class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">📋 Детальный прогноз</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover" id="forecast-table-data">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Месяц</th>
+                                                    <th>Новые клиенты</th>
+                                                    <th>Выручка от новых</th>
+                                                    <th>Существующие клиенты</th>
+                                                    <th>Выручка от существующих</th>
+                                                    <th>Всего клиентов</th>
+                                                    <th>Общая выручка</th>
+                                                    <th>Уверенность</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="forecastTableBody">
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -312,7 +796,98 @@
         </div>
     </div>
 
+    <!-- Модалка массовой рассылки по очереди -->
+    <div class="modal fade" id="queueBroadcastModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">📢 Массовая рассылка по очереди</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Очередь:</strong> <span id="broadcast-queue-name"></span></label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="broadcastMessage" class="form-label">Текст сообщения</label>
+                        <textarea class="form-control" id="broadcastMessage" rows="4" 
+                                  placeholder="Введите текст сообщения для рассылки..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Каналы отправки</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="channelTelegram" checked>
+                            <label class="form-check-label" for="channelTelegram">
+                                <i class="bi bi-telegram text-primary"></i> Telegram
+                            </label>
+                        </div>
+                    </div>
+                    <div id="broadcast-loading" style="display: none;" class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Отправка...</span>
+                        </div>
+                        <p class="mt-2">Отправка сообщений...</p>
+                    </div>
+                    <div id="broadcast-result" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="sendQueueBroadcast()" id="sendBroadcastBtn">
+                        <i class="bi bi-send"></i> Отправить рассылку
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка персонального сообщения -->
+    <div class="modal fade" id="personalMessageModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">💬 Отправить сообщение клиенту</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="personalMessageForm">
+                        <input type="hidden" id="personalAgentId">
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Клиент:</strong> <span id="personal-client-name"></span></label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="personalMessage" class="form-label">Текст сообщения</label>
+                            <textarea class="form-control" id="personalMessage" rows="3" 
+                                      placeholder="Введите персональное сообщение..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Канал отправки</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="personalChannel" id="personalTelegram" value="telegram" checked>
+                                <label class="form-check-label" for="personalTelegram">
+                                    <i class="bi bi-telegram text-primary"></i> Telegram
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="personal-loading" style="display: none;" class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Отправка...</span>
+                        </div>
+                    </div>
+                    <div id="personal-result" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="sendPersonalMessage()" id="sendPersonalBtn">
+                        <i class="bi bi-send"></i> Отправить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="app.js"></script>
+    <script src="client-modal.js"></script>
 </body>
 </html>

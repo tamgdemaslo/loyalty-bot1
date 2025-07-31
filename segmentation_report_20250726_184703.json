@@ -1,0 +1,92 @@
+{
+  "generated_at": "2025-07-26T18:47:03.239721",
+  "total_customers": 1729,
+  "active_customers": 1631,
+  "total_revenue_kopecks": 1935546657,
+  "total_revenue_rubles": 19355466.57,
+  "segments": {
+    "At Risk": {
+      "customers_count": 183,
+      "total_revenue": 139450258,
+      "avg_revenue": 762023.27,
+      "avg_frequency": 1.56,
+      "avg_recency": 441.69,
+      "total_bonuses": 3660000,
+      "registered_count": 0,
+      "percentage": 10.6
+    },
+    "Champions": {
+      "customers_count": 229,
+      "total_revenue": 706336208,
+      "avg_revenue": 3084437.59,
+      "avg_frequency": 5.52,
+      "avg_recency": 57.47,
+      "total_bonuses": 4610000,
+      "registered_count": 1,
+      "percentage": 13.2
+    },
+    "Hibernating": {
+      "customers_count": 98,
+      "total_revenue": 0,
+      "avg_revenue": 0.0,
+      "avg_frequency": 0.0,
+      "avg_recency": 999.0,
+      "total_bonuses": 1960000,
+      "registered_count": 0,
+      "percentage": 5.7
+    },
+    "Loyal Customers": {
+      "customers_count": 179,
+      "total_revenue": 321035815,
+      "avg_revenue": 1793496.17,
+      "avg_frequency": 3.06,
+      "avg_recency": 191.61,
+      "total_bonuses": 3580000,
+      "registered_count": 0,
+      "percentage": 10.4
+    },
+    "Need Attention": {
+      "customers_count": 116,
+      "total_revenue": 69271385,
+      "avg_revenue": 597167.11,
+      "avg_frequency": 1.0,
+      "avg_recency": 298.81,
+      "total_bonuses": 2320000,
+      "registered_count": 0,
+      "percentage": 6.7
+    },
+    "Other": {
+      "customers_count": 560,
+      "total_revenue": 489694139,
+      "avg_revenue": 874453.82,
+      "avg_frequency": 1.13,
+      "avg_recency": 239.16,
+      "total_bonuses": 11200000,
+      "registered_count": 0,
+      "percentage": 32.4
+    },
+    "Potential Loyalists": {
+      "customers_count": 364,
+      "total_revenue": 209758852,
+      "avg_revenue": 576260.58,
+      "avg_frequency": 1.0,
+      "avg_recency": 103.64,
+      "total_bonuses": 7280000,
+      "registered_count": 0,
+      "percentage": 21.1
+    }
+  },
+  "activity_distribution": {
+    "Inactive": 809,
+    "Lost": 435,
+    "Declining": 305,
+    "Active": 180
+  },
+  "growth_potential_distribution": {
+    "Stable": 711,
+    "Low": 397,
+    "High": 267,
+    "Medium": 256,
+    "Unknown": 98
+  }
+}

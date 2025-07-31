@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  loyalty-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: loyalty-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - MS_TOKEN=${MS_TOKEN}
+      - YCLIENTS_PARTNER_TOKEN=${YCLIENTS_PARTNER_TOKEN}
+      - MINIAPP_URL=${MINIAPP_URL}
+      - NODE_ENV=production
+    volumes:
+      - ./data:/app/data
+      - ./loyalty.db:/app/loyalty.db
+    networks:
+      - loyalty-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  miniapp:
+    build:
+      context: ./miniapp
+      dockerfile: ../Dockerfile
+    container_name: loyalty-miniapp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      - ../loyalty.db:/app/loyalty.db
+    networks:
+      - loyalty-network
+    depends_on:
+      - loyalty-bot
+
+networks:
+  loyalty-network:
+    driver: bridge
+
+volumes:
+  loyalty-data:

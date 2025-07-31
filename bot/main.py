@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import BOT_TOKEN
 from bot.handlers import register as register_handlers
-from bot.accrual import accrual_loop
+# from bot.accrual import accrual_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,11 +30,12 @@ async def main() -> None:
     register_handlers(dp)
 
     async with bot:
-        try:
-            # Background task for bonus accrual
-            asyncio.create_task(accrual_loop())
-        except Exception as e:
-            logging.error(f"Error in accrual_loop: {e}")
+        # Временно отключаем accrual_loop
+        # try:
+        #     # Background task for bonus accrual
+        #     asyncio.create_task(accrual_loop())
+        # except Exception as e:
+        #     logging.error(f"Error in accrual_loop: {e}")
 
         # Remove old updates and start polling
         await bot.delete_webhook(drop_pending_updates=True)

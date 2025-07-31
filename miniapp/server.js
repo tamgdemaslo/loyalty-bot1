@@ -62,6 +62,11 @@ app.post('/api/user', async (req, res) => {
     const { initData, user: directUser } = req.body;
     console.log('--- Received /api/user request ---');
 
+    if (initData && !validateTelegramWebAppData(initData)) {
+        console.error('Validation failed for /api/user');
+        return res.status(403).json({ error: 'Invalid Telegram data' });
+    }
+
     try {
         let user = null;
 
@@ -336,6 +341,11 @@ app.post('/api/auth-phone', async (req, res) => {
     
     console.log('📞 Phone authorization request:', { phone, directUser });
     console.log('📋 initData length:', initData ? initData.length : 0);
+
+    if (initData && !validateTelegramWebAppData(initData)) {
+        console.error('Validation failed for /api/auth-phone');
+        return res.status(403).json({ error: 'Invalid Telegram data' });
+    }
     
     try {
         let user = null;
@@ -378,12 +388,14 @@ app.post('/api/auth-phone', async (req, res) => {
         // Ищем пользователя в МойСклад по номеру телефона
         console.log(`🔍 Searching for agent with phone: ${phone}`);
         let agentId = await loyaltyAPI.findAgentByPhone(phone);
+        let isNewUser = false; // Флаг для отслеживания нового пользователя
         
         if (!agentId) {
             // Создаем нового контрагента в МойСклад
             console.log(`👤 Creating new agent for phone: ${phone}`);
             const fullName = user.first_name + (user.last_name ? ` ${user.last_name}` : '');
             agentId = await loyaltyAPI.createNewAgent(fullName, phone, user.id);
+            isNewUser = true; // Устанавливаем флаг
             
             if (!agentId) {
                 return res.status(500).json({
@@ -403,14 +415,19 @@ app.post('/api/auth-phone', async (req, res) => {
             user.first_name + (user.last_name ? ` ${user.last_name}` : '')
         );
         
-        // Получаем данные пользователя для ответа
-        const [balance, loyaltyLevel, contact, statistics] = await Promise.all([
+        // Получаем данные пользователя для ответа, обрабатывая возможные ошибки
+        const results = await Promise.allSettled([
             loyaltyAPI.getBalance(agentId),
             loyaltyAPI.getLoyaltyLevel(agentId),
             loyaltyAPI.getUserContact(user.id),
             loyaltyAPI.getClientStatistics(agentId)
         ]);
-        
+
+        const balance = results[0].status === 'fulfilled' ? results[0].value : 0;
+        const loyaltyLevel = results[1].status === 'fulfilled' ? results[1].value : { level_id: 0, total_spent: 0, total_earned: 0, total_redeemed: 0 };
+        const contact = results[2].status === 'fulfilled' ? results[2].value : { fullname: '', phone: '' };
+        const statistics = results[3].status === 'fulfilled' ? results[3].value : { totalVisits: 0, thisYearVisits: 0, averageCheck: 0 };
+
         // Форматируем уровни лояльности
         const levelNames = ['', 'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
         const levelName = levelNames[loyaltyLevel.level_id] || 'Bronze';
@@ -429,12 +446,12 @@ app.post('/api/auth-phone', async (req, res) => {
             thisYearVisits: statistics.thisYearVisits,
             averageCheck: Math.round(statistics.averageCheck / 100),
             registeredDate: new Date().toISOString().split('T')[0],
-            isNewUser: !agentId // Если агент был создан только что
+            isNewUser: isNewUser
         };
         
         res.json({
             success: true,
-            message: agentId ? 'Авторизация успешна' : 'Пользователь зарегистрирован',
+            message: isNewUser ? 'Вы успешно зарегистрированы!' : 'Авторизация успешна',
             user: userData
         });
         
@@ -450,6 +467,11 @@ app.post('/api/auth-phone', async (req, res) => {
 // Регистрация нового пользователя
 app.post('/api/register', async (req, res) => {
     const { initData, phone, name } = req.body;
+
+    if (initData && !validateTelegramWebAppData(initData)) {
+        console.error('Validation failed for /api/register');
+        return res.status(403).json({ error: 'Invalid Telegram data' });
+    }
     
     try {
         // Парсим данные пользователя из Telegram
@@ -517,7 +539,12 @@ app.post('/api/register', async (req, res) => {
 // Проверка статуса регистрации пользователя
 app.post('/api/check-registration', async (req, res) => {
     const { initData, phone } = req.body;
-    
+
+    if (initData && !validateTelegramWebAppData(initData)) {
+        console.error('Validation failed for /api/check-registration');
+        return res.status(403).json({ error: 'Invalid Telegram data' });
+    }
+
     try {
         // Парсим данные пользователя
         const urlParams = new URLSearchParams(initData);

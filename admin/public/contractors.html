@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Все контрагенты - Админ панель</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stats { display: flex; gap: 20px; margin-bottom: 20px; }
+        .stat-card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            flex: 1;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stat-number { font-size: 2em; font-weight: bold; color: #007AFF; }
+        .stat-label { color: #666; margin-top: 5px; }
+        .table-container { 
+            background: white; 
+            border-radius: 10px; 
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { 
+            padding: 15px; 
+            text-align: left; 
+            border-bottom: 1px solid #f0f0f0;
+        }
+        th { 
+            background: #f8f9fa; 
+            font-weight: 600;
+            color: #333;
+        }
+        tr:hover { background: #f8f9fa; }
+        .balance { 
+            font-weight: bold; 
+            color: #34C759;
+        }
+        .status { 
+            padding: 4px 8px; 
+            border-radius: 15px; 
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        .status.registered { background: #e6f7ff; color: #1890ff; }
+        .status.not-registered { background: #fff2e6; color: #fa8c16; }
+        .loading { 
+            text-align: center; 
+            padding: 40px;
+            color: #666;
+        }
+        .search-box {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+            padding: 20px;
+        }
+        .pagination button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .pagination button:hover { background: #f5f5f5; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination .active { background: #007AFF; color: white; border-color: #007AFF; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏪 Все контрагенты системы лояльности</h1>
+            <p>Полный список всех контрагентов с бонусными счетами</p>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalContractors">0</div>
+                <div class="stat-label">Всего контрагентов</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalBalance">0 ₽</div>
+                <div class="stat-label">Общий баланс</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="registeredUsers">0</div>
+                <div class="stat-label">Зарегистрированы в боте</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <input type="text" id="searchInput" class="search-box" placeholder="Поиск по имени, телефону или ID...">
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>№</th>
+                        <th>Agent ID</th>
+                        <th>Имя</th>
+                        <th>Телефон</th>
+                        <th>Баланс</th>
+                        <th>Статус</th>
+                        <th>Уровень</th>
+                        <th>Потрачено</th>
+                    </tr>
+                </thead>
+                <tbody id="contractorsTable">
+                    <tr>
+                        <td colspan="8" class="loading">Загрузка данных...</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="client-modal.js"></script>
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let searchTimeout;
+
+        // Функция форматирования валюты
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('ru-RU', {
+                style: 'currency',
+                currency: 'RUB',
+                minimumFractionDigits: 0
+            }).format(amount / 100);
+        }
+
+        // Загрузка статистики
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const stats = await response.json();
+                
+                document.getElementById('totalBalance').textContent = formatMoney(stats.totalBalance || 0);
+                document.getElementById('registeredUsers').textContent = stats.totalUsers || 0;
+            } catch (error) {
+                console.error('Ошибка загрузки статистики:', error);
+            }
+        }
+
+        // Загрузка контрагентов
+        async function loadContractors(page = 1, search = '') {
+            try {
+                const params = new URLSearchParams({
+                    page: page,
+                    limit: 20
+                });
+                
+                if (search) {
+                    params.append('search', search);
+                }
+
+                const response = await fetch(`/api/all-contractors?${params}`);
+                const data = await response.json();
+                
+                displayContractors(data.contractors, data.pagination);
+                document.getElementById('totalContractors').textContent = data.pagination.total;
+                
+            } catch (error) {
+                console.error('Ошибка загрузки контрагентов:', error);
+                document.getElementById('contractorsTable').innerHTML = 
+                    '<tr><td colspan="8" class="loading">Ошибка загрузки данных</td></tr>';
+            }
+        }
+
+        // Отображение контрагентов
+        function displayContractors(contractors, pagination) {
+            const tbody = document.getElementById('contractorsTable');
+            
+            if (contractors.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="loading">Контрагенты не найдены</td></tr>';
+                return;
+            }
+
+            const startIndex = (pagination.page - 1) * pagination.limit;
+            
+            tbody.innerHTML = contractors.map((contractor, index) => `
+                <tr>
+                    <td>${startIndex + index + 1}</td>
+                    <td><code>${contractor.agent_id.substring(0, 8)}...</code></td>
+                    <td>
+                        <a href="#" style="text-decoration: none; color: #007AFF; font-weight: 500;" 
+                           onclick="clientModal.show('${contractor.agent_id}'); return false;">
+                            ${contractor.fullname}
+                        </a>
+                    </td>
+                    <td>${contractor.phone}</td>
+                    <td class="balance">${formatMoney(contractor.balance)}</td>
+                    <td>
+                        <span class="status ${contractor.is_registered ? 'registered' : 'not-registered'}">
+                            ${contractor.is_registered ? '✅ В боте' : '⏳ Не зарегистрирован'}
+                        </span>
+                    </td>
+                    <td>Уровень ${contractor.level_id}</td>
+                    <td>${formatMoney(contractor.total_spent)}</td>
+                </tr>
+            `).join('');
+
+            // Обновляем пагинацию
+            currentPage = pagination.page;
+            totalPages = pagination.pages;
+            updatePagination(pagination);
+        }
+
+        // Обновление пагинации
+        function updatePagination(pagination) {
+            const paginationEl = document.getElementById('pagination');
+            const { page, pages, total } = pagination;
+
+            let paginationHTML = `
+                <button onclick="loadContractors(1)" ${page === 1 ? 'disabled' : ''}>Первая</button>
+                <button onclick="loadContractors(${page - 1})" ${page === 1 ? 'disabled' : ''}>←</button>
+                <span>Страница ${page} из ${pages} (всего: ${total})</span>
+                <button onclick="loadContractors(${page + 1})" ${page === pages ? 'disabled' : ''}>→</button>
+                <button onclick="loadContractors(${pages})" ${page === pages ? 'disabled' : ''}>Последняя</button>
+            `;
+
+            paginationEl.innerHTML = paginationHTML;
+        }
+
+        // Поиск с задержкой
+        function handleSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const search = document.getElementById('searchInput').value;
+                loadContractors(1, search);
+            }, 500);
+        }
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadContractors();
+            
+            document.getElementById('searchInput').addEventListener('input', handleSearch);
+        });
+    </script>
+</body>
+</html>

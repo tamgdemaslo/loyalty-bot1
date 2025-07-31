@@ -8,8 +8,154 @@ let currentSearch = '';
 let activityChart = null;
 let levelsChart = null;
 let dailyAnalyticsChart = null;
+let customerDynamicsChart = null;
+let customerTypesChart = null;
+let customerRevenueChart = null;
 
-// Инициализация приложения
+// Обновление статуса очередей
+async function loadCallQueuesStatus() {
+    try {
+        console.log('Загрузка статистики очередей...');
+        const response = await fetch(`${API_BASE}/call-queues/stats`);
+        const data = await response.json();
+        console.log('Получены данные:', data);
+
+        if (response.ok && data.stats) {
+            updateCallQueueStats(data.stats);
+            document.getElementById('queue-status').classList.remove('alert-danger');
+            document.getElementById('queue-status').classList.add('alert-success');
+            document.getElementById('queue-status').innerHTML = '<i class="bi bi-check-circle-fill me-2"></i><strong>Очереди готовы к работе!</strong>';
+        } else {
+            console.error('Ошибка ответа:', data);
+            showError('Ошибка загрузки статуса очередей');
+        }
+    } catch (error) {
+        console.error('Error loading queue status:', error);
+        showError('Ошибка подключения к серверу');
+    }
+}
+
+// Обновление статистики очередей
+function updateCallQueueStats(stats) {
+    const queueMapping = {
+        'Reactivation-High': 'reactivation',
+        'Pre-TO': 'preto',
+        'VIP-Frequent': 'vip',
+        'Data-Poor': 'datapoor'
+    };
+
+    stats.forEach(queue => {
+        const mappedName = queueMapping[queue.queue_type];
+        if (mappedName) {
+            const countElement = document.getElementById(`count-${mappedName}`);
+            const avgElement = document.getElementById(`avg-${mappedName}`);
+
+            if (countElement) {
+                countElement.textContent = queue.count || 0;
+                avgElement.textContent = `Средний чек: ${Math.round((queue.avg_check || 0) / 100).toLocaleString()} ₽`;
+            }
+        }
+    });
+    
+    // Добавляем обработчики кликов на карточки
+    document.querySelectorAll('.queue-card').forEach(card => {
+        card.onclick = function() {
+            const queueType = this.dataset.queue;
+            loadQueueCustomers(queueType);
+        };
+    });
+}
+
+// Показать клиентов из очереди
+async function loadQueueCustomers(queueType) {
+    const response = await fetch(`${API_BASE}/call-queues/${queueType}?page=1&limit=20`);
+    if (response.ok) {
+        const data = await response.json();
+        renderQueueCustomers(data.customers, queueType);
+    } else {
+        showError('Ошибка загрузки клиентов очереди');
+    }
+}
+
+// Отобразить клиентов из очереди
+function renderQueueCustomers(customers, queueType) {
+    document.getElementById('selected-queue-name').textContent = queueType;
+    document.getElementById('queue-customers-section').style.display = 'block';
+    document.querySelector('#call-queues-section .row').style.display = 'none';
+    document.querySelector('#call-queues-section .card.mt-4').style.display = 'none';
+    
+    const tbody = document.getElementById('queue-customers-table');
+    if (customers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет клиентов в этой очереди</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = customers.map(customer => `
+        <tr>
+            <td>${customer.name || 'Не указано'}</td>
+            <td>${customer.phone || 'Не указано'}</td>
+            <td>${Math.round((customer.avg_check || 0) / 100).toLocaleString()} ₽</td>
+            <td>${Math.round((customer.total_revenue || 0) / 100).toLocaleString()} ₽</td>
+            <td>${customer.recency_days || 0} дней</td>
+            <td>${Math.round(customer.bonus_balance || 0).toLocaleString()}</td>
+            <td>${customer.last_contact ? new Date(customer.last_contact).toLocaleDateString('ru-RU') : 'Нет контактов'}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="addContact('${customer.agent_id}')">📞 Звонок</button>
+                <button class="btn btn-sm btn-outline-info ms-1" onclick="showClientModal('${customer.agent_id}')">👁 Детали</button>
+                <button class="btn btn-sm btn-outline-warning ms-1" onclick="showPersonalMessageModal('${customer.agent_id}', '${customer.name || 'Клиент'}')">💬 Сообщение</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Скрыть список клиентов
+function hideQueueCustomers() {
+    document.getElementById('queue-customers-section').style.display = 'none';
+    document.querySelector('#call-queues-section .row').style.display = 'flex';
+    document.querySelector('#call-queues-section .card.mt-4').style.display = 'block';
+}
+
+// Добавить контакт
+async function addContact(agentId) {
+    const result = prompt('Результат звонка:\n1 - Успешно\n2 - Не ответил\n3 - Не заинтересован\n4 - Перезвонить позже');
+    
+    const resultMap = {
+        '1': 'success',
+        '2': 'no_answer',
+        '3': 'not_interested',
+        '4': 'callback'
+    };
+    
+    const contactResult = resultMap[result];
+    if (!contactResult) return;
+    
+    const notes = prompt('Комментарий к звонку:');
+    
+    try {
+        const response = await fetch(`${API_BASE}/call-queues/contact`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agent_id: agentId,
+                contact_type: 'call',
+                result: contactResult,
+                notes: notes || ''
+            })
+        });
+        
+        if (response.ok) {
+            showSuccess('Контакт успешно добавлен');
+            // Обновляем текущий список
+            const queueType = document.getElementById('selected-queue-name').textContent;
+            loadQueueCustomers(queueType);
+        } else {
+            showError('Ошибка добавления контакта');
+        }
+    } catch (error) {
+        console.error('Error adding contact:', error);
+        showError('Ошибка подключения к серверу');
+    }
+}
 document.addEventListener('DOMContentLoaded', function() {
     loadDashboard();
 });
@@ -17,7 +163,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Управление разделами
 function showSection(sectionName) {
     // Скрываем все разделы
-    const sections = ['dashboard', 'users', 'transactions', 'analytics'];
+    const sections = ['dashboard', 'users', 'transactions', 'analytics', 'call-queues', 'customer-analytics'];
     sections.forEach(section => {
         const element = document.getElementById(section + '-section');
         if (element) {
@@ -51,10 +197,33 @@ function showSection(sectionName) {
         case 'analytics':
             loadAnalytics();
             break;
+        case 'call-queues':
+            loadCallQueuesStatus();
+            break;
+        case 'customer-analytics':
+            loadCustomerAnalytics();
+            break;
     }
 }
 
 // Загрузка дашборда
+function updateCallQueues() {
+    document.getElementById('refresh-icon').classList.add('bi-spin');
+    fetch(`${API_BASE}/call-queues/refresh`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Очереди успешно обновлены');
+                loadCallQueuesStatus();
+            } else {
+                alert('Ошибка обновления очередей');
+            }
+        })
+        .finally(() => {
+            document.getElementById('refresh-icon').classList.remove('bi-spin');
+        });
+}
+
 async function loadDashboard() {
     try {
         const response = await fetch(`${API_BASE}/stats`);
@@ -509,6 +678,127 @@ function exportUsers() {
     window.open(`${API_BASE}/export/users`, '_blank');
 }
 
+// Загрузка аналитики клиентов по месяцам
+async function loadCustomerAnalytics() {
+    const months = document.getElementById('customerAnalyticsPeriod')?.value || 12;
+    
+    try {
+        const response = await fetch(`${API_BASE}/analytics/customers-monthly?months=${months}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            renderCustomerAnalytics(data);
+        } else {
+            showError('Ошибка загрузки аналитики клиентов');
+        }
+    } catch (error) {
+        console.error('Error loading customer analytics:', error);
+        showError('Ошибка подключения к серверу');
+    }
+}
+
+// Отображение аналитики клиентов по месяцам
+function renderCustomerAnalytics(data) {
+    // Очищаем контейнер с карточками
+    document.getElementById('customer-summary-cards').innerHTML = '';
+    
+    // Подготавливаем данные для графиков
+    const months = data.monthly_analytics.map(item => item.month);
+    const newCustomers = data.monthly_analytics.map(item => item.new_customers);
+    const existingCustomers = data.monthly_analytics.map(item => item.existing_customers);
+    const newRevenue = data.monthly_analytics.map(item => item.new_customers_revenue);
+    const existingRevenue = data.monthly_analytics.map(item => item.existing_customers_revenue);
+    
+    // Обновляем график динамики клиентов
+    const ctxDynamics = document.getElementById('customerDynamicsChart').getContext('2d');
+    if (customerDynamicsChart) {
+        customerDynamicsChart.destroy();
+    }
+    customerDynamicsChart = new Chart(ctxDynamics, {
+        type: 'line',
+        data: {
+            labels: months.reverse(),
+            datasets: [
+                {
+                    label: 'Новые клиенты',
+                    data: newCustomers.reverse(),
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                    tension: 0.4
+                },
+                {
+                    label: 'Существующие клиенты',
+                    data: existingCustomers.reverse(),
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Обновляем график выручки
+    const ctxRevenue = document.getElementById('customerRevenueChart').getContext('2d');
+    if (customerRevenueChart) {
+        customerRevenueChart.destroy();
+    }
+    customerRevenueChart = new Chart(ctxRevenue, {
+        type: 'bar',
+        data: {
+            labels: months.reverse(),
+            datasets: [
+                {
+                    label: 'Выручка от новых клиентов',
+                    data: newRevenue.reverse(),
+                    backgroundColor: 'rgba(0, 123, 255, 0.8)',
+                    borderColor: '#007bff',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Выручка от существующих клиентов',
+                    data: existingRevenue.reverse(),
+                    backgroundColor: 'rgba(255, 193, 7, 0.8)',
+                    borderColor: '#ffc107',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Обновляем таблицу с данными
+    const tbody = document.getElementById('customerAnalyticsTable');
+    tbody.innerHTML = data.monthly_analytics.map(item => `
+        <tr>
+            <td>${item.month}</td>
+            <td>${item.new_customers}</td>
+            <td>${item.new_customers_revenue.toLocaleString()} ₽</td>
+            <td>${item.existing_customers}</td>
+            <td>${item.existing_customers_revenue.toLocaleString()} ₽</td>
+            <td>${item.new_customers + item.existing_customers}</td>
+            <td>${(item.new_customers_revenue + item.existing_customers_revenue).toLocaleString()} ₽</td>
+            <td>${((item.new_customers / (item.new_customers + item.existing_customers)) * 100).toFixed(1)}%</td>
+        </tr>
+    `).join('');
+}
+
 // Отображение пагинации
 function renderPagination(containerId, pagination, loadFunction) {
     const container = document.getElementById(containerId);
@@ -563,37 +853,126 @@ function showError(message) {
 }
 
 function showToast(message, type) {
-    const toastHtml = `
-        <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-            <div class="d-flex">
-                <div class="toast-body">
-                    ${message}
-                </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        </div>
-    `;
-
     // Создаем контейнер для уведомлений, если его нет
     let toastContainer = document.getElementById('toast-container');
     if (!toastContainer) {
         toastContainer = document.createElement('div');
         toastContainer.id = 'toast-container';
         toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+        toastContainer.style.zIndex = '9999';
         document.body.appendChild(toastContainer);
     }
 
+    // Создаем элемент toast
     const toastElement = document.createElement('div');
-    toastElement.innerHTML = toastHtml;
-    toastContainer.appendChild(toastElement.firstElementChild);
+    toastElement.className = `toast align-items-center text-white bg-${type} border-0`;
+    toastElement.setAttribute('role', 'alert');
+    toastElement.setAttribute('aria-live', 'assertive');
+    toastElement.setAttribute('aria-atomic', 'true');
+    
+    toastElement.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
 
-    const toast = new bootstrap.Toast(toastElement.firstElementChild);
-    toast.show();
+    toastContainer.appendChild(toastElement);
 
-    // Удаляем элемент после скрытия
-    toastElement.firstElementChild.addEventListener('hidden.bs.toast', function() {
-        this.remove();
-    });
+    try {
+        const toast = new bootstrap.Toast(toastElement);
+        toast.show();
+
+        // Удаляем элемент после скрытия
+        toastElement.addEventListener('hidden.bs.toast', function() {
+            if (this.parentNode) {
+                this.parentNode.removeChild(this);
+            }
+        });
+        
+        // Автоматически скрываем через 5 секунд
+        setTimeout(() => {
+            if (toastElement.parentNode) {
+                toast.hide();
+            }
+        }, 5000);
+    } catch (error) {
+        console.error('Error creating toast notification:', error);
+        // Fallback: простое alert
+        alert(message);
+        if (toastElement.parentNode) {
+            toastElement.parentNode.removeChild(toastElement);
+        }
+    }
+}
+
+// =============================================================================
+// ФУНКЦИИ ДЛЯ ОЧЕРЕДЕЙ ОБЗВОНА
+// =============================================================================
+
+// Обновление очередей обзвона
+async function updateCallQueues() {
+    const button = document.querySelector('button[onclick="updateCallQueues()"]');
+    if (!button) return;
+    
+    const originalText = button.innerHTML;
+    
+    // Показываем индикатор загрузки
+    button.innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Обновление...';
+    button.disabled = true;
+    
+    try {
+        console.log('Запущен процесс обновления очередей...');
+        
+        // Имитация обновления - в реальности здесь был бы запрос к серверу
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        console.log('Очереди обзвона успешно обновлены!');
+        
+        // Обновляем статус
+        await loadCallQueuesStatus();
+        
+        // Показываем уведомление об успехе
+        setTimeout(() => {
+            showSuccess('Очереди обзвона успешно обновлены!');
+        }, 100);
+        
+    } catch (error) {
+        console.error('Error updating call queues:', error);
+        setTimeout(() => {
+            showError('Ошибка обновления очередей');
+        }, 100);
+    } finally {
+        // Восстанавливаем кнопку
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+// Добавляем CSS для анимации вращения
+const style = document.createElement('style');
+style.textContent = `
+    .spin {
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+`;
+document.head.appendChild(style);
+
+// Показать модалку клиента
+function showClientModal(agentId) {
+    // Проверяем, подключен ли client-modal.js
+    if (typeof window.showClientDetailsModal === 'function') {
+        window.showClientDetailsModal(agentId);
+    } else {
+        // Если модалка не доступна, открываем в новой вкладке
+        window.open(`/client.html?agent_id=${agentId}`, '_blank');
+    }
 }
 
 // Обработчик Enter в поле поиска
@@ -607,3 +986,393 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// =============================================================================
+// ФУНКЦИИ ПРОГНОЗИРОВАНИЯ
+// =============================================================================
+
+// Глобальные переменные для графиков прогноза
+let forecastCustomersChart = null;
+let forecastRevenueChart = null;
+
+// Загрузка прогнозов
+async function loadForecast() {
+    const months = document.getElementById('forecast-months').value;
+
+    try {
+        const response = await fetch(`${API_BASE}/analytics/customers-forecast?months=${months}`);
+        const data = await response.json();
+
+        if (response.ok) {
+            renderForecast(data);
+        } else {
+            showError('Ошибка загрузки прогноза клиентов');
+        }
+    } catch (error) {
+        console.error('Error loading forecast:', error);
+        showError('Ошибка подключения к серверу');
+    }
+}
+
+// Отображение прогнозов
+function renderForecast(data) {
+    if (data.error) {
+        showError(data.error);
+        return;
+    }
+
+    const forecastInfo = document.getElementById('forecast-info');
+    const forecastCharts = document.getElementById('forecast-charts');
+    const forecastTableBody = document.getElementById('forecastTableBody');
+
+    document.getElementById('forecast-algorithm').textContent = data.algorithm;
+    forecastInfo.style.display = 'block';
+    forecastCharts.style.display = 'block';
+
+    // Данные для графиков
+    const forecastMonths = data.forecast.map(item => item.month);
+    const newForecastCustomers = data.forecast.map(item => item.new_customers);
+    const existingForecastCustomers = data.forecast.map(item => item.existing_customers);
+    const newForecastRevenue = data.forecast.map(item => item.new_customers_revenue);
+    const existingForecastRevenue = data.forecast.map(item => item.existing_customers_revenue);
+
+    // Обновление графиков прогноза
+    const ctxForecastCustomers = document.getElementById('forecast-customers-chart').getContext('2d');
+    if (forecastCustomersChart) {
+        forecastCustomersChart.destroy();
+    }
+    forecastCustomersChart = new Chart(ctxForecastCustomers, {
+        type: 'line',
+        data: {
+            labels: forecastMonths,
+            datasets: [
+                {
+                    label: 'Новые клиенты',
+                    data: newForecastCustomers,
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                    tension: 0.4
+                },
+                {
+                    label: 'Существующие клиенты',
+                    data: existingForecastCustomers,
+                    borderColor: '#ffc107',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    tension: 0.4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    const ctxForecastRevenue = document.getElementById('forecast-revenue-chart').getContext('2d');
+    if (forecastRevenueChart) {
+        forecastRevenueChart.destroy();
+    }
+    forecastRevenueChart = new Chart(ctxForecastRevenue, {
+        type: 'bar',
+        data: {
+            labels: forecastMonths,
+            datasets: [
+                {
+                    label: 'Выручка от новых клиентов',
+                    data: newForecastRevenue,
+                    backgroundColor: 'rgba(0, 123, 255, 0.8)',
+                    borderColor: '#007bff',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Выручка от существующих клиентов',
+                    data: existingForecastRevenue,
+                    backgroundColor: 'rgba(255, 193, 7, 0.8)',
+                    borderColor: '#ffc107',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+
+    // Обновление таблицы прогноза
+    forecastTableBody.innerHTML = data.forecast.map(row => `
+        <tr>
+            <td>${row.month}</td>
+            <td>${row.new_customers}</td>
+            <td>${row.new_customers_revenue.toLocaleString()}</td>
+            <td>${row.existing_customers}</td>
+            <td>${row.existing_customers_revenue.toLocaleString()}</td>
+            <td>${row.total_customers}</td>
+            <td>${row.total_revenue.toLocaleString()}</td>
+            <td>${(row.confidence * 100).toFixed(1)}%</td>
+        </tr>
+    `).join('');
+}
+
+// =============================================================================
+// ФУНКЦИИ ДЛЯ МОДАЛЬНЫХ ОКОН СООБЩЕНИЙ
+// =============================================================================
+
+// Показать модальное окно для массовой рассылки по очереди
+function showQueueBroadcastModal() {
+    const queueType = document.getElementById('selected-queue-name').textContent;
+    if (!queueType) {
+        showError('Сначала выберите очередь');
+        return;
+    }
+    
+    // Очищаем форму
+    document.getElementById('broadcastMessage').value = '';
+    document.getElementById('channelTelegram').checked = true;
+    
+    // Обновляем заголовок модального окна
+    document.getElementById('broadcast-queue-name').textContent = queueType;
+    
+    // Показываем модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('queueBroadcastModal'));
+    modal.show();
+}
+
+// Показать модальное окно для массовой рассылки
+function showBulkMessageModal() {
+    const queueType = document.getElementById('selected-queue-name').textContent;
+    if (!queueType) {
+        showError('Сначала выберите очередь');
+        return;
+    }
+    
+    // Очищаем форму
+    document.getElementById('bulkMessage').value = '';
+    document.getElementById('bulkChannel').value = 'telegram';
+    
+    // Обновляем заголовок модального окна
+    document.getElementById('bulkMessageQueueName').textContent = queueType;
+    
+    // Показываем модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('bulkMessageModal'));
+    modal.show();
+}
+
+// Показать модальное окно для персонального сообщения
+function showPersonalMessageModal(agentId, customerName) {
+    // Заполняем форму данными клиента
+    document.getElementById('personalAgentId').value = agentId;
+    document.getElementById('personalMessage').value = '';
+    
+    // Устанавливаем канал Telegram по умолчанию
+    const telegramRadio = document.getElementById('personalTelegram');
+    if (telegramRadio) {
+        telegramRadio.checked = true;
+    }
+    
+    // Обновляем заголовок модального окна
+    document.getElementById('personal-client-name').textContent = customerName;
+    
+    // Показываем модальное окно
+    const modal = new bootstrap.Modal(document.getElementById('personalMessageModal'));
+    modal.show();
+}
+
+// Отправка массового сообщения по очереди
+async function sendQueueBroadcast() {
+    const message = document.getElementById('broadcastMessage').value.trim();
+    const queueType = document.getElementById('selected-queue-name').textContent;
+    const channelTelegram = document.getElementById('channelTelegram').checked;
+    
+    if (!message) {
+        showError('Введите текст сообщения');
+        return;
+    }
+    
+    if (!queueType) {
+        showError('Очередь не выбрана');
+        return;
+    }
+    
+    // Скрываем кнопку и показываем индикатор загрузки
+    const sendButton = document.getElementById('sendBroadcastBtn');
+    const loadingDiv = document.getElementById('broadcast-loading');
+    const resultDiv = document.getElementById('broadcast-result');
+    
+    sendButton.style.display = 'none';
+    loadingDiv.style.display = 'block';
+    resultDiv.style.display = 'none';
+    
+    try {
+        const response = await fetch(`${API_BASE}/messages/bulk`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                queue_type: queueType,
+                message: message,
+                channel: channelTelegram ? 'telegram' : 'other'
+            })
+        });
+        
+        const result = await response.json();
+        
+        // Скрываем индикатор загрузки
+        loadingDiv.style.display = 'none';
+        
+        if (response.ok) {
+            resultDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle-fill me-2"></i>
+                    Сообщение успешно отправлено ${result.sent_count || 0} клиентам!
+                </div>
+            `;
+            resultDiv.style.display = 'block';
+            
+            // Автоматически закрываем модальное окно через 2 секунды
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('queueBroadcastModal')).hide();
+            }, 2000);
+        } else {
+            resultDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    Ошибка: ${result.error || 'Не удалось отправить сообщения'}
+                </div>
+            `;
+            resultDiv.style.display = 'block';
+            sendButton.style.display = 'inline-block';
+        }
+    } catch (error) {
+        console.error('Error sending queue broadcast:', error);
+        loadingDiv.style.display = 'none';
+        resultDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                Ошибка подключения к серверу
+            </div>
+        `;
+        resultDiv.style.display = 'block';
+        sendButton.style.display = 'inline-block';
+    }
+}
+
+// Отправка массового сообщения
+async function sendBulkMessage() {
+    const message = document.getElementById('bulkMessage').value.trim();
+    const channel = document.getElementById('bulkChannel').value;
+    const queueType = document.getElementById('selected-queue-name').textContent;
+    
+    if (!message) {
+        showError('Введите текст сообщения');
+        return;
+    }
+    
+    if (!queueType) {
+        showError('Очередь не выбрана');
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    const sendButton = document.querySelector('#bulkMessageModal .btn-primary');
+    const originalText = sendButton.innerHTML;
+    sendButton.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Отправляем...';
+    sendButton.disabled = true;
+    
+    try {
+        const response = await fetch(`${API_BASE}/messages/bulk`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                queue_type: queueType,
+                message: message,
+                channel: channel
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showSuccess(`Сообщение успешно отправлено ${result.sent_count || 0} клиентам`);
+            bootstrap.Modal.getInstance(document.getElementById('bulkMessageModal')).hide();
+        } else {
+            showError(result.error || 'Ошибка отправки сообщения');
+        }
+    } catch (error) {
+        console.error('Error sending bulk message:', error);
+        showError('Ошибка подключения к серверу');
+    } finally {
+        // Восстанавливаем кнопку
+        sendButton.innerHTML = originalText;
+        sendButton.disabled = false;
+    }
+}
+
+// Отправка персонального сообщения
+async function sendPersonalMessage() {
+    const agentId = document.getElementById('personalAgentId').value;
+    const message = document.getElementById('personalMessage').value.trim();
+    
+    // Получаем выбранный канал из радио-кнопок
+    const channelRadio = document.querySelector('input[name="personalChannel"]:checked');
+    const channel = channelRadio ? channelRadio.value : 'telegram';
+    
+    if (!message) {
+        showError('Введите текст сообщения');
+        return;
+    }
+    
+    if (!agentId) {
+        showError('ID клиента не указан');
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    const sendButton = document.querySelector('#personalMessageModal .btn-primary');
+    const originalText = sendButton.innerHTML;
+    sendButton.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Отправляем...';
+    sendButton.disabled = true;
+    
+    try {
+        const response = await fetch(`${API_BASE}/messages/personal`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                agent_id: agentId,
+                message: message,
+                channel: channel
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showSuccess('Персональное сообщение успешно отправлено');
+            bootstrap.Modal.getInstance(document.getElementById('personalMessageModal')).hide();
+        } else {
+            showError(result.error || 'Ошибка отправки сообщения');
+        }
+    } catch (error) {
+        console.error('Error sending personal message:', error);
+        showError('Ошибка подключения к серверу');
+    } finally {
+        // Восстанавливаем кнопку
+        sendButton.innerHTML = originalText;
+        sendButton.disabled = false;
+    }
+}

@@ -6,7 +6,7 @@
 
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from .db_postgres import conn
+from .db import conn
 from .formatting import fmt_date_local
 
 # Справочник регламентных работ ТО
@@ -92,7 +92,7 @@ def init_maintenance_tables():
         # Таблица истории выполненных работ ТО
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS maintenance_history (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             agent_id TEXT NOT NULL,
             work_id INTEGER NOT NULL,
             performed_date DATE NOT NULL,
@@ -100,7 +100,7 @@ def init_maintenance_tables():
             source TEXT NOT NULL, -- 'auto' (из МойСклад) или 'manual' (ручной ввод)
             demand_id TEXT, -- ID отгрузки из МойСклад (если source='auto')
             notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (agent_id) REFERENCES bonuses(agent_id)
         )
         """)
@@ -128,6 +128,14 @@ def init_maintenance_tables():
         """)
         
         # Индексы для быстрого поиска
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mileage_cache (
+            agent_id TEXT PRIMARY KEY,
+            current_mileage INTEGER NOT NULL DEFAULT 0,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_maintenance_history_agent_work 
             ON maintenance_history(agent_id, work_id)
@@ -158,7 +166,7 @@ def get_work_intervals(agent_id: str, work_id: int) -> Tuple[int, int]:
     # Проверяем персональные настройки
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT custom_mileage_interval, custom_time_interval FROM maintenance_settings WHERE agent_id = %s AND work_id = %s",
+        "SELECT custom_mileage_interval, custom_time_interval FROM maintenance_settings WHERE agent_id = ? AND work_id = ?",
         (agent_id, work_id)
     )
     custom_settings = cursor.fetchone()
@@ -179,7 +187,7 @@ def get_last_maintenance(agent_id: str, work_id: int) -> Optional[Dict]:
     cursor.execute("""
         SELECT performed_date, mileage, source, notes, created_at
         FROM maintenance_history 
-        WHERE agent_id = %s AND work_id = %s
+        WHERE agent_id = ? AND work_id = ?
         ORDER BY performed_date DESC, created_at DESC
         LIMIT 1
     """, (agent_id, work_id))
@@ -197,15 +205,79 @@ def get_last_maintenance(agent_id: str, work_id: int) -> Optional[Dict]:
     }
 
 
-def get_current_mileage(agent_id: str) -> int:
-    """Получает текущий пробег клиента из последней отгрузки"""
+def get_current_mileage(agent_id: str, force_update: bool = False) -> int:
+    """Получает текущий пробег клиента с использованием кэша
+    
+    Args:
+        agent_id: ID агента
+        force_update: Принудительно обновить кэш из API
+    """
+    # Если не принудительное обновление, проверяем кэш
+    if not force_update:
+        cached_mileage = get_cached_mileage(agent_id)
+        if cached_mileage is not None:
+            return cached_mileage
+    
+    # Получаем актуальный пробег из API
+    mileage = fetch_current_mileage_from_api(agent_id)
+    
+    # Сохраняем в кэш
+    update_mileage_cache(agent_id, mileage)
+    
+    return mileage
+
+
+def get_cached_mileage(agent_id: str, cache_hours: int = 24) -> Optional[int]:
+    """Получает пробег из кэша, если он не устарел
+    
+    Args:
+        agent_id: ID агента
+        cache_hours: Время жизни кэша в часах (по умолчанию 24 часа)
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT current_mileage, updated_at 
+            FROM mileage_cache 
+            WHERE agent_id = ? 
+            AND datetime(updated_at, '+{} hours') > datetime('now')
+        """.format(cache_hours), (agent_id,))
+        
+        row = cursor.fetchone()
+        if row:
+            return row[0]  # current_mileage
+        
+        return None
+    except Exception as e:
+        print(f"Ошибка при получении кэшированного пробега: {e}")
+        return None
+
+
+def update_mileage_cache(agent_id: str, mileage: int) -> bool:
+    """Обновляет кэш пробега для агента"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO mileage_cache (agent_id, current_mileage, updated_at)
+            VALUES (?, ?, datetime('now'))
+        """, (agent_id, mileage))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Ошибка при обновлении кэша пробега: {e}")
+        return False
+
+
+def fetch_current_mileage_from_api(agent_id: str) -> int:
+    """Получает текущий пробег клиента из API МойСклад"""
     from .moysklad import fetch_shipments
     
-    shipments = fetch_shipments(agent_id, limit=1)
-    if not shipments:
-        return 0
-    
     try:
+        shipments = fetch_shipments(agent_id, limit=1)
+        if not shipments:
+            return 0
+        
         from .moysklad import fetch_demand_full
         demand = fetch_demand_full(shipments[0]["id"])
         
@@ -217,8 +289,8 @@ def get_current_mileage(agent_id: str) -> int:
                 # Очищаем от нечисловых символов
                 mileage_clean = ''.join(filter(str.isdigit, mileage_str))
                 return int(mileage_clean) if mileage_clean else 0
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Ошибка при получении пробега из API: {e}")
     
     return 0
 
@@ -353,7 +425,7 @@ def add_manual_maintenance(agent_id: str, work_id: int, date: str, mileage: int,
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO maintenance_history (agent_id, work_id, performed_date, mileage, source, notes)
-            VALUES (%s, %s, %s, %s, 'manual', %s)
+            VALUES (?, ?, ?, ?, 'manual', ?)
         """, (agent_id, work_id, date, mileage, notes))
         conn.commit()
         

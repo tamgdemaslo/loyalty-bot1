@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFM-анализ: Руководство по сегментации клиентов</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4rem 0;
+        }
+        .metric-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            height: 100%;
+        }
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+        }
+        .metric-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 1rem;
+        }
+        .r-icon { background: linear-gradient(135deg, #FF6B6B, #FF8E53); }
+        .f-icon { background: linear-gradient(135deg, #4ECDC4, #44A08D); }
+        .m-icon { background: linear-gradient(135deg, #45B7D1, #96C93D); }
+        
+        .score-example {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            color: white;
+            text-align: center;
+            line-height: 40px;
+            font-weight: bold;
+            margin: 0 5px;
+        }
+        .score-1 { background: #dc3545; }
+        .score-2 { background: #fd7e14; }
+        .score-3 { background: #ffc107; color: black; }
+        .score-4 { background: #28a745; }
+        .score-5 { background: #20c997; }
+        
+        .segment-card {
+            border-left: 5px solid;
+            margin-bottom: 1rem;
+        }
+        .segment-champions { border-left-color: #FFD700; background: #FFFDF0; }
+        .segment-loyal { border-left-color: #32CD32; background: #F0FFF0; }
+        .segment-potential { border-left-color: #1E90FF; background: #F0F8FF; }
+        .segment-new { border-left-color: #FF69B4; background: #FFF0F5; }
+        .segment-promising { border-left-color: #9370DB; background: #F8F0FF; }
+        .segment-attention { border-left-color: #FFA500; background: #FFF8DC; }
+        .segment-sleep { border-left-color: #FF6347; background: #FFF5EE; }
+        .segment-risk { border-left-color: #DC143C; background: #FFE4E1; }
+        .segment-lose { border-left-color: #8B0000; background: #FFEBEE; }
+        .segment-hibernating { border-left-color: #696969; background: #F8F8FF; }
+        
+        .activity-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-weight: 500;
+            display: inline-block;
+            margin: 0.25rem;
+        }
+        .activity-active { background: #d4edda; color: #155724; }
+        .activity-declining { background: #fff3cd; color: #856404; }
+        .activity-inactive { background: #f8d7da; color: #721c24; }
+        .activity-lost { background: #d1ecf1; color: #0c5460; }
+        
+        .growth-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-weight: 500;
+            display: inline-block;
+            margin: 0.25rem;
+        }
+        .growth-high { background: #d1ecf1; color: #0c5460; }
+        .growth-medium { background: #d4edda; color: #155724; }
+        .growth-stable { background: #e2e3e5; color: #41464b; }
+        .growth-low { background: #fff3cd; color: #856404; }
+        
+        .formula {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+            font-family: 'Courier New', monospace;
+            margin: 1rem 0;
+        }
+        
+        .toc {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+        
+        .section {
+            margin-bottom: 3rem;
+        }
+        
+        .back-to-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 1.2rem;
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Section -->
+    <div class="hero">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h1 class="display-4 fw-bold">📊 RFM-анализ клиентов</h1>
+                    <p class="lead">Полное руководство по сегментации клиентской базы на основе поведенческих данных</p>
+                    <div class="mt-4">
+                        <a href="segmentation.html" class="btn btn-light btn-lg me-3">
+                            <i class="bi bi-pie-chart-fill me-2"></i>Перейти к анализу
+                        </a>
+                        <a href="/" class="btn btn-outline-light btn-lg">
+                            <i class="bi bi-house me-2"></i>Главная
+                        </a>
+                    </div>
+                </div>
+                <div class="col-lg-4 text-center">
+                    <div class="metric-icon r-icon text-white mb-3">R</div>
+                    <div class="metric-icon f-icon text-white mb-3">F</div>
+                    <div class="metric-icon m-icon text-white">M</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-5">
+        <!-- Содержание -->
+        <div class="toc">
+            <h4><i class="bi bi-list-ul me-2"></i>Содержание</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <ul class="list-unstyled">
+                        <li><a href="#what-is-rfm" class="text-decoration-none">1. Что такое RFM-анализ?</a></li>
+                        <li><a href="#rfm-metrics" class="text-decoration-none">2. Метрики RFM</a></li>
+                        <li><a href="#scoring" class="text-decoration-none">3. Система оценок</a></li>
+                        <li><a href="#segments" class="text-decoration-none">4. Сегменты клиентов</a></li>
+                        <li><a href="#additional-metrics" class="text-decoration-none">5. Дополнительные метрики</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <ul class="list-unstyled">
+                        <li><a href="#activity-status" class="text-decoration-none">6. Статусы активности</a></li>
+                        <li><a href="#growth-potential" class="text-decoration-none">7. Потенциал роста</a></li>
+                        <li><a href="#practical-use" class="text-decoration-none">8. Практическое применение</a></li>
+                        <li><a href="#recommendations" class="text-decoration-none">9. Рекомендации по работе</a></li>
+                        <li><a href="#examples" class="text-decoration-none">10. Примеры применения</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Что такое RFM-анализ -->
+        <section id="what-is-rfm" class="section">
+            <h2><i class="bi bi-question-circle me-2 text-primary"></i>Что такое RFM-анализ?</h2>
+            <p class="lead">RFM-анализ — это метод сегментации клиентов на основе их покупательского поведения.</p>
+            
+            <div class="alert alert-info">
+                <h5><i class="bi bi-info-circle me-2"></i>Ключевые преимущества:</h5>
+                <ul class="mb-0">
+                    <li><strong>Простота использования</strong> — легко понять и применить</li>
+                    <li><strong>Точность сегментации</strong> — основан на реальном поведении клиентов</li>
+                    <li><strong>Практическая ценность</strong> — напрямую влияет на маркетинговые решения</li>
+                    <li><strong>Универсальность</strong> — подходит для любого бизнеса с повторными покупками</li>
+                </ul>
+            </div>
+
+            <p>RFM расшифровывается как:</p>
+            <ul>
+                <li><strong>R (Recency)</strong> — давность последней покупки</li>
+                <li><strong>F (Frequency)</strong> — частота покупок</li>
+                <li><strong>M (Monetary)</strong> — денежная ценность клиента</li>
+            </ul>
+        </section>
+
+        <!-- RFM Метрики -->
+        <section id="rfm-metrics" class="section">
+            <h2><i class="bi bi-speedometer2 me-2 text-primary"></i>Метрики RFM</h2>
+            
+            <div class="row">
+                <!-- Recency -->
+                <div class="col-lg-4 mb-4">
+                    <div class="card metric-card">
+                        <div class="card-body text-center">
+                            <div class="metric-icon r-icon text-white">
+                                <i class="bi bi-clock-history"></i>
+                            </div>
+                            <h3>Recency (R)</h3>
+                            <h5 class="text-muted">Давность покупки</h5>
+                            <p>Количество дней, прошедших с момента последней покупки клиента.</p>
+                            
+                            <div class="formula">
+                                R = Текущая дата - Дата последней покупки
+                            </div>
+                            
+                            <div class="alert alert-light">
+                                <strong>Принцип:</strong> Чем меньше дней прошло, тем выше вероятность повторной покупки.
+                            </div>
+                            
+                            <h6>Примеры:</h6>
+                            <ul class="text-start">
+                                <li><strong>1-7 дней</strong> — очень активный клиент</li>
+                                <li><strong>8-30 дней</strong> — активный клиент</li>
+                                <li><strong>31-90 дней</strong> — снижающийся клиент</li>
+                                <li><strong>91-365 дней</strong> — неактивный клиент</li>
+                                <li><strong>365+ дней</strong> — потерянный клиент</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Frequency -->
+                <div class="col-lg-4 mb-4">
+                    <div class="card metric-card">
+                        <div class="card-body text-center">
+                            <div class="metric-icon f-icon text-white">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </div>
+                            <h3>Frequency (F)</h3>
+                            <h5 class="text-muted">Частота покупок</h5>
+                            <p>Общее количество покупок, совершенных клиентом за анализируемый период.</p>
+                            
+                            <div class="formula">
+                                F = Количество уникальных заказов
+                            </div>
+                            
+                            <div class="alert alert-light">
+                                <strong>Принцип:</strong> Чем больше покупок, тем более лояльный клиент.
+                            </div>
+                            
+                            <h6>Примеры:</h6>
+                            <ul class="text-start">
+                                <li><strong>1 покупка</strong> — новый клиент</li>
+                                <li><strong>2-3 покупки</strong> — повторный клиент</li>
+                                <li><strong>4-10 покупок</strong> — постоянный клиент</li>
+                                <li><strong>11-20 покупок</strong> — лояльный клиент</li>
+                                <li><strong>20+ покупок</strong> — VIP клиент</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monetary -->
+                <div class="col-lg-4 mb-4">
+                    <div class="card metric-card">
+                        <div class="card-body text-center">
+                            <div class="metric-icon m-icon text-white">
+                                <i class="bi bi-currency-dollar"></i>
+                            </div>
+                            <h3>Monetary (M)</h3>
+                            <h5 class="text-muted">Денежная ценность</h5>
+                            <p>Общая сумма денег, потраченная клиентом за весь период взаимодействия.</p>
+                            
+                            <div class="formula">
+                                M = Σ (Сумма всех заказов)
+                            </div>
+                            
+                            <div class="alert alert-light">
+                                <strong>Принцип:</strong> Чем больше потратил, тем ценнее клиент для бизнеса.
+                            </div>
+                            
+                            <h6>Примеры:</h6>
+                            <ul class="text-start">
+                                <li><strong>0-5,000 ₽</strong> — низкая ценность</li>
+                                <li><strong>5,000-15,000 ₽</strong> — средняя ценность</li>
+                                <li><strong>15,000-50,000 ₽</strong> — высокая ценность</li>
+                                <li><strong>50,000-150,000 ₽</strong> — очень высокая ценность</li>
+                                <li><strong>150,000+ ₽</strong> — премиум клиент</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Система оценок -->
+        <section id="scoring" class="section">
+            <h2><i class="bi bi-star-fill me-2 text-primary"></i>Система оценок (1-5)</h2>
+            
+            <p>Каждая метрика RFM оценивается по шкале от 1 до 5, где:</p>
+            
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <h5>Для Recency (R):</h5>
+                    <ul>
+                        <li><span class="score-example score-5">5</span> — покупал очень недавно (отличная актуальность)</li>
+                        <li><span class="score-example score-4">4</span> — покупал недавно (хорошая актуальность)</li>
+                        <li><span class="score-example score-3">3</span> — покупал некоторое время назад</li>
+                        <li><span class="score-example score-2">2</span> — покупал давно</li>
+                        <li><span class="score-example score-1">1</span> — покупал очень давно</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h5>Для Frequency (F) и Monetary (M):</h5>
+                    <ul>
+                        <li><span class="score-example score-5">5</span> — очень высокое значение</li>
+                        <li><span class="score-example score-4">4</span> — высокое значение</li>
+                        <li><span class="score-example score-3">3</span> — среднее значение</li>
+                        <li><span class="score-example score-2">2</span> — низкое значение</li>
+                        <li><span class="score-example score-1">1</span> — очень низкое значение</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="alert alert-warning">
+                <h5><i class="bi bi-exclamation-triangle me-2"></i>Важно понимать:</h5>
+                <p class="mb-0">Оценки рассчитываются относительно вашей клиентской базы. Клиент с оценкой "5" по частоте — это тот, кто входит в 20% самых активных клиентов именно вашего бизнеса.</p>
+            </div>
+
+            <h4>Примеры RFM-кодов:</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6>Идеальный клиент: <span class="score-example score-5">5</span><span class="score-example score-5">5</span><span class="score-example score-5">5</span></h6>
+                            <small class="text-muted">Покупал недавно, часто покупает, тратит много денег</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6>Проблемный клиент: <span class="score-example score-1">1</span><span class="score-example score-5">5</span><span class="score-example score-5">5</span></h6>
+                            <small class="text-muted">Давно не покупал, но раньше был очень ценным</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Сегменты клиентов -->
+        <section id="segments" class="section">
+            <h2><i class="bi bi-people-fill me-2 text-primary"></i>Сегменты клиентов</h2>
+            
+            <p>На основе RFM-оценок клиенты автоматически распределяются по 10 основным сегментам:</p>
+
+            <div class="row">
+                <div class="col-lg-6">
+                    <!-- Champions -->
+                    <div class="card segment-card segment-champions mb-3">
+                        <div class="card-body">
+                            <h5>🏆 Champions (Чемпионы)</h5>
+                            <p><strong>RFM:</strong> Высокие оценки по всем параметрам (4-5, 4-5, 4-5)</p>
+                            <p><strong>Описание:</strong> Лучшие клиенты — покупают часто, недавно и тратят много денег.</p>
+                            <p><strong>Стратегия:</strong> Поощрение, эксклюзивные предложения, программы лояльности премиум-уровня.</p>
+                        </div>
+                    </div>
+
+                    <!-- Loyal Customers -->
+                    <div class="card segment-card segment-loyal mb-3">
+                        <div class="card-body">
+                            <h5>💎 Loyal Customers (Лояльные клиенты)</h5>
+                            <p><strong>RFM:</strong> Хорошие оценки (2-5, 3-5, 3-5)</p>
+                            <p><strong>Описание:</strong> Постоянные клиенты с стабильным покупательским поведением.</p>
+                            <p><strong>Стратегия:</strong> Регулярные акции, персональные предложения, программы рекомендаций.</p>
+                        </div>
+                    </div>
+
+                    <!-- Potential Loyalists -->
+                    <div class="card segment-card segment-potential mb-3">
+                        <div class="card-body">
+                            <h5>⭐ Potential Loyalists (Потенциально лояльные)</h5>
+                            <p><strong>RFM:</strong> Недавно покупали, но редко (3-5, 1-3, 1-3)</p>
+                            <p><strong>Описание:</strong> Клиенты с потенциалом стать лояльными при правильном подходе.</p>
+                            <p><strong>Стратегия:</strong> Стимулирование повторных покупок, обучающий контент, бонусы за активность.</p>
+                        </div>
+                    </div>
+
+                    <!-- New Customers -->
+                    <div class="card segment-card segment-new mb-3">
+                        <div class="card-body">
+                            <h5>🆕 New Customers (Новые клиенты)</h5>
+                            <p><strong>RFM:</strong> Недавно совершили первую покупку (4-5, 1, 1)</p>
+                            <p><strong>Описание:</strong> Клиенты, недавно сделавшие первую покупку.</p>
+                            <p><strong>Стратегия:</strong> Приветственные серии, onboarding, знакомство с продуктами.</p>
+                        </div>
+                    </div>
+
+                    <!-- Promising -->
+                    <div class="card segment-card segment-promising mb-3">
+                        <div class="card-body">
+                            <h5>🌟 Promising (Перспективные)</h5>
+                            <p><strong>RFM:</strong> Относительно новые клиенты (3-4, 1, 1)</p>
+                            <p><strong>Описание:</strong> Недавно пришедшие клиенты с потенциалом развития.</p>
+                            <p><strong>Стратегия:</strong> Nurturing кампании, образовательный контент, мягкие продажи.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <!-- Need Attention -->
+                    <div class="card segment-card segment-attention mb-3">
+                        <div class="card-body">
+                            <h5>⚠️ Need Attention (Требуют внимания)</h5>
+                            <p><strong>RFM:</strong> Средние показатели (2-3, 2-3, 2-3)</p>
+                            <p><strong>Описание:</strong> Клиенты со снижающейся активностью.</p>
+                            <p><strong>Стратегия:</strong> Реактивация, специальные предложения, исследование причин снижения активности.</p>
+                        </div>
+                    </div>
+
+                    <!-- About to Sleep -->
+                    <div class="card segment-card segment-sleep mb-3">
+                        <div class="card-body">
+                            <h5>😴 About to Sleep (Засыпающие)</h5>
+                            <p><strong>RFM:</strong> Снижающаяся активность (2-3, 1-2, 1-2)</p>
+                            <p><strong>Описание:</strong> Клиенты, которые могут скоро стать неактивными.</p>
+                            <p><strong>Стратегия:</strong> Срочные меры по реактивации, ограниченные по времени предложения.</p>
+                        </div>
+                    </div>
+
+                    <!-- At Risk -->
+                    <div class="card segment-card segment-risk mb-3">
+                        <div class="card-body">
+                            <h5>🚨 At Risk (В зоне риска)</h5>
+                            <p><strong>RFM:</strong> Давно не покупали, но были активными (1-2, 2-5, 2-5)</p>
+                            <p><strong>Описание:</strong> Ценные клиенты, которых можно потерять.</p>
+                            <p><strong>Стратегия:</strong> Персональные предложения, win-back кампании, обратная связь.</p>
+                        </div>
+                    </div>
+
+                    <!-- Cannot Lose Them -->
+                    <div class="card segment-card segment-lose mb-3">
+                        <div class="card-body">
+                            <h5>💰 Cannot Lose Them (Нельзя терять)</h5>
+                            <p><strong>RFM:</strong> Высокоценные, но неактивные (1-2, 4-5, 4-5)</p>
+                            <p><strong>Описание:</strong> Самые ценные клиенты, но давно не активные.</p>
+                            <p><strong>Стратегия:</strong> VIP обслуживание, персональные менеджеры, эксклюзивные условия.</p>
+                        </div>
+                    </div>
+
+                    <!-- Hibernating -->
+                    <div class="card segment-card segment-hibernating mb-3">
+                        <div class="card-body">
+                            <h5>❄️ Hibernating (Спящие)</h5>
+                            <p><strong>RFM:</strong> Низкие показатели по всем параметрам (1-2, 1-2, 1-2)</p>
+                            <p><strong>Описание:</strong> Неактивные клиенты с низкой ценностью.</p>
+                            <p><strong>Стратегия:</strong> Минимальные ресурсы, массовые предложения, возможно исключение.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Дополнительные метрики -->
+        <section id="additional-metrics" class="section">
+            <h2><i class="bi bi-graph-up-arrow me-2 text-primary"></i>Дополнительные метрики</h2>
+            
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>📈 CLV (Customer Lifetime Value)</h5>
+                    <p>Оценочная ценность клиента на весь период взаимодействия.</p>
+                    <div class="formula">
+                        CLV = Средний чек × Частота покупок × Прогнозный период
+                    </div>
+                    <p><strong>Применение:</strong> Определение бюджета на привлечение и удержание клиентов.</p>
+                </div>
+                
+                <div class="col-md-6">
+                    <h5>🔄 Частота покупок в месяц</h5>
+                    <p>Среднее количество покупок клиента в месяц.</p>
+                    <div class="formula">
+                        Частота = Общее кол-во покупок ÷ Кол-во месяцев активности
+                    </div>
+                    <p><strong>Применение:</strong> Планирование частоты коммуникаций и акций.</p>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <h5>💰 Средний чек</h5>
+                    <p>Средняя сумма одной покупки клиента.</p>
+                    <div class="formula">
+                        Средний чек = Общая сумма покупок ÷ Количество покупок
+                    </div>
+                    <p><strong>Применение:</strong> Стратегии увеличения среднего чека (upsell, cross-sell).</p>
+                </div>
+                
+                <div class="col-md-6">
+                    <h5>📅 Дни с первой покупки</h5>
+                    <p>Возраст клиента в системе с момента первой покупки.</p>
+                    <div class="formula">
+                        Возраст клиента = Текущая дата - Дата первой покупки
+                    </div>
+                    <p><strong>Применение:</strong> Понимание жизненного цикла клиента.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Статусы активности -->
+        <section id="activity-status" class="section">
+            <h2><i class="bi bi-activity me-2 text-primary"></i>Статусы активности</h2>
+            
+            <p>Клиенты классифицируются по уровню активности на основе давности последней покупки:</p>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="activity-badge activity-active">
+                        <strong>🟢 Active (Активные)</strong>
+                    </div>
+                    <p>Покупали в течение последних 30 дней. Высокая вероятность повторной покупки.</p>
+                    
+                    <div class="activity-badge activity-declining">
+                        <strong>🟡 Declining (Снижающиеся)</strong>
+                    </div>
+                    <p>Покупали 31-90 дней назад. Требуют внимания для предотвращения оттока.</p>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="activity-badge activity-inactive">
+                        <strong>🟠 Inactive (Неактивные)</strong>
+                    </div>
+                    <p>Покупали 91-365 дней назад. Нужны активные меры по реактивации.</p>
+                    
+                    <div class="activity-badge activity-lost">
+                        <strong>🔴 Lost (Потерянные)</strong>
+                    </div>
+                    <p>Не покупали больше года. Возможно, стоит исключить из активных кампаний.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Потенциал роста -->
+        <section id="growth-potential" class="section">
+            <h2><i class="bi bi-trending-up me-2 text-primary"></i>Потенциал роста</h2>
+            
+            <p>Оценка возможностей увеличения ценности клиента:</p>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="growth-badge growth-high">
+                        <strong>🚀 High (Высокий)</strong>
+                    </div>
+                    <p>Недавно покупали, но редко. Большой потенциал увеличения частоты покупок.</p>
+                    
+                    <div class="growth-badge growth-medium">
+                        <strong>📈 Medium (Средний)</strong>
+                    </div>
+                    <p>Относительно недавно покупали, но тратят мало. Потенциал увеличения среднего чека.</p>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="growth-badge growth-stable">
+                        <strong>📊 Stable (Стабильный)</strong>
+                    </div>
+                    <p>Сбалансированное поведение. Фокус на удержание и постепенный рост.</p>
+                    
+                    <div class="growth-badge growth-low">
+                        <strong>📉 Low (Низкий)</strong>
+                    </div>
+                    <p>Давно не покупали, хотя раньше были активны. Риск полной потери.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Практическое применение -->
+        <section id="practical-use" class="section">
+            <h2><i class="bi bi-gear-fill me-2 text-primary"></i>Практическое применение</h2>
+            
+            <div class="alert alert-success">
+                <h5><i class="bi bi-lightbulb me-2"></i>Как использовать RFM-анализ в работе:</h5>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <h5>📧 Email-маркетинг</h5>
+                    <ul>
+                        <li><strong>Champions:</strong> Эксклюзивные предложения</li>
+                        <li><strong>At Risk:</strong> Win-back кампании</li>
+                        <li><strong>New Customers:</strong> Onboarding серии</li>
+                        <li><strong>Hibernating:</strong> Реактивация или исключение</li>
+                    </ul>
+                </div>
+                
+                <div class="col-md-4">
+                    <h5>💰 Ценообразование</h5>
+                    <ul>
+                        <li><strong>Loyal Customers:</strong> Специальные скидки</li>
+                        <li><strong>Champions:</strong> Премиум продукты</li>
+                        <li><strong>Promising:</strong> Пробные предложения</li>
+                        <li><strong>Cannot Lose:</strong> Персональные условия</li>
+                    </ul>
+                </div>
+                
+                <div class="col-md-4">
+                    <h5>🎯 Таргетинг рекламы</h5>
+                    <ul>
+                        <li><strong>Высокий CLV:</strong> Lookalike аудитории</li>
+                        <li><strong>At Risk:</strong> Ретаргетинг</li>
+                        <li><strong>New Customers:</strong> Кросс-селл</li>
+                        <li><strong>Potential Loyalists:</strong> Upsell</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Рекомендации -->
+        <section id="recommendations" class="section">
+            <h2><i class="bi bi-check-circle-fill me-2 text-primary"></i>Рекомендации по работе с сегментами</h2>
+            
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Сегмент</th>
+                            <th>Приоритет</th>
+                            <th>Основные действия</th>
+                            <th>Метрики для отслеживания</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Champions</strong></td>
+                            <td><span class="badge bg-success">Высокий</span></td>
+                            <td>Удержание, увеличение лояльности, реферральные программы</td>
+                            <td>Retention rate, NPS, рефералы</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cannot Lose Them</strong></td>
+                            <td><span class="badge bg-danger">Критический</span></td>
+                            <td>Персональная работа, VIP-сервис, возврат активности</td>
+                            <td>Реактивация, время отклика</td>
+                        </tr>
+                        <tr>
+                            <td><strong>At Risk</strong></td>
+                            <td><span class="badge bg-warning">Высокий</span></td>
+                            <td>Win-back кампании, исследование причин ухода</td>
+                            <td>Конверсия реактивации</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Loyal Customers</strong></td>
+                            <td><span class="badge bg-success">Высокий</span></td>
+                            <td>Поддержание активности, cross-sell, upsell</td>
+                            <td>Средний чек, частота</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Potential Loyalists</strong></td>
+                            <td><span class="badge bg-info">Средний</span></td>
+                            <td>Увеличение частоты, персонализация</td>
+                            <td>Конверсия в Loyal</td>
+                        </tr>
+                        <tr>
+                            <td><strong>New Customers</strong></td>
+                            <td><span class="badge bg-info">Средний</span></td>
+                            <td>Onboarding, первый repeat purchase</td>
+                            <td>Время до второй покупки</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Примеры применения -->
+        <section id="examples" class="section">
+            <h2><i class="bi bi-journal-text me-2 text-primary"></i>Примеры применения</h2>
+            
+            <div class="row">
+                <div class="col-md-12">
+                    <h5>🎯 Кейс 1: Увеличение выручки на 25%</h5>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <p><strong>Проблема:</strong> Автосервис хотел увеличить выручку от существующих клиентов.</p>
+                            <p><strong>Решение:</strong></p>
+                            <ul>
+                                <li><strong>Champions:</strong> Предложили программу техобслуживания с скидкой 15%</li>
+                                <li><strong>At Risk:</strong> Отправили персональные предложения со скидкой 30%</li>
+                                <li><strong>Potential Loyalists:</strong> Создали образовательную рассылку о важности ТО</li>
+                            </ul>
+                            <p><strong>Результат:</strong> Выручка выросла на 25% за 6 месяцев, retention rate увеличился с 60% до 78%.</p>
+                        </div>
+                    </div>
+
+                    <h5>💡 Кейс 2: Снижение оттока на 40%</h5>
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <p><strong>Проблема:</strong> Высокий отток ценных клиентов.</p>
+                            <p><strong>Решение:</strong></p>
+                            <ul>
+                                <li><strong>Cannot Lose Them:</strong> Назначили персональных менеджеров</li>
+                                <li><strong>About to Sleep:</strong> Запустили win-back кампанию с опросом</li>
+                                <li><strong>Need Attention:</strong> Увеличили частоту коммуникаций</li>
+                            </ul>
+                            <p><strong>Результат:</strong> Отток ценных клиентов снизился на 40%, NPS вырос с 6.5 до 8.2.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Заключение -->
+        <section class="section">
+            <div class="alert alert-primary">
+                <h4><i class="bi bi-trophy me-2"></i>Заключение</h4>
+                <p>RFM-анализ — это мощный инструмент для понимания клиентской базы и принятия обоснованных маркетинговых решений. Регулярное применение RFM-сегментации поможет:</p>
+                <ul class="mb-0">
+                    <li>Увеличить LTV клиентов на 15-30%</li>
+                    <li>Снизить отток на 20-40%</li>
+                    <li>Повысить эффективность маркетинговых кампаний в 2-3 раза</li>
+                    <li>Оптимизировать распределение маркетингового бюджета</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <!-- Кнопка "Наверх" -->
+    <button class="back-to-top" onclick="scrollToTop()">
+        <i class="bi bi-arrow-up"></i>
+    </button>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Плавная прокрутка для ссылок
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Показ/скрытие кнопки "Наверх"
+        window.addEventListener('scroll', function() {
+            const backToTopBtn = document.querySelector('.back-to-top');
+            if (window.pageYOffset > 300) {
+                backToTopBtn.style.display = 'block';
+            } else {
+                backToTopBtn.style.display = 'none';
+            }
+        });
+
+        // Функция прокрутки наверх
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Анимация появления карточек при прокрутке
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        // Применяем анимацию к карточкам
+        document.querySelectorAll('.metric-card, .segment-card').forEach(card => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(card);
+        });
+    </script>
+</body>
+</html>

@@ -15,7 +15,7 @@ from bot.db import (get_agent_id, register_mapping, get_balance, change_balance,
 from bot.moysklad import (find_agent_by_phone, fetch_shipments, fetch_demand_full, apply_discount)
 from bot.moysklad import MS_BASE, HEADERS
 from bot.formatting import fmt_money, fmt_date_local, render_positions
-from bot.accrual import doc_age_seconds, accrue_for_demand
+# from bot.accrual import doc_age_seconds, accrue_for_demand
 from bot.loyalty import get_redeem_cap, format_level_status, format_level_benefits
 from bot.analytics import (
     get_client_statistics, get_client_ranking, get_bonus_history,
@@ -120,23 +120,24 @@ def register(dp):
 
             # начислим бонусы, если пропустили последнюю отгрузку
             last = fetch_shipments(aid, limit=1)
-            if last:
-                did = last[0]["id"]
-                already = conn.execute(
-                    "SELECT 1 FROM accrual_log WHERE demand_id=?", (did,)
-                ).fetchone()
-                if not already:
-                    full = fetch_demand_full(did)
-                    if doc_age_seconds(full["moment"]) >= 300:
-                        added = accrue_for_demand(full)
-                        if added:
-                            conn.execute(
-                                "INSERT INTO accrual_log(demand_id) VALUES(?)", (did,)
-                            )
-                            conn.commit()
-                            await m.answer(
-                                f"✅ Начислено за последнее посещение: {fmt_money(added)}"
-                            )
+            # Временно отключаем автоматическое начисление бонусов
+            # if last:
+            #     did = last[0]["id"]
+            #     already = conn.execute(
+            #         "SELECT 1 FROM accrual_log WHERE demand_id=?", (did,)
+            #     ).fetchone()
+            #     if not already:
+            #         full = fetch_demand_full(did)
+            #         if doc_age_seconds(full["moment"]) >= 300:
+            #             added = accrue_for_demand(full)
+            #             if added:
+            #                 conn.execute(
+            #                     "INSERT INTO accrual_log(demand_id) VALUES(?)", (did,)
+            #                 )
+            #                 conn.commit()
+            #                 await m.answer(
+            #                     f"✅ Начислено за последнее посещение: {fmt_money(added)}"
+            #                 )
 
         await m.answer("✅ Вы авторизованы.\nВыберите действие:",
                     reply_markup=mini_app_menu_kb())
